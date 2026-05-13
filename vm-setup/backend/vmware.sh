@@ -79,6 +79,20 @@ backend_preflight() {
         || { echo "$VM_SETUP/qcow2-to-vmware.sh missing or not executable" >&2; return 1; }
     ip -br addr show vmnet8 >/dev/null 2>&1 \
         || { echo "vmnet8 interface not present. Is VMware Workstation set up? sudo vmware-networks --start" >&2; return 1; }
+
+    # Re-detect vmnet8 subnet now that we've confirmed the interface is up.
+    # The source-time detection at the top of this file may have hit the
+    # hardcoded 172.16.87 fallback if vmnet8 wasn't ready yet — and
+    # TARGET_IP/DEBUGGER_IP were frozen against that wrong subnet, pointing
+    # future operations at the wrong addresses. Re-check now and patch the
+    # globals if they drifted.
+    local detected
+    if detected="$(_vmware_detect_vmnet8_subnet)" && [[ -n "$detected" && "$detected" != "$_VMWARE_SUBNET" ]]; then
+        echo "[*] vmware: vmnet8 subnet is $detected (source-time detection saw '$_VMWARE_SUBNET'; patching)" >&2
+        _VMWARE_SUBNET="$detected"
+        TARGET_IP="${_VMWARE_SUBNET}.100"
+        DEBUGGER_IP="${_VMWARE_SUBNET}.101"
+    fi
 }
 
 # Verify that the .100/.101 DHCP reservations are present in vmnet8 dhcpd.conf.
