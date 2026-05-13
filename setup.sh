@@ -593,18 +593,24 @@ _lab_spawn() {
     log "Configuring debugger role (kd.exe KDNET, MCP HTTP)"
     "$VM_SETUP/role-bootstrap-debugger.sh" "$DEBUGGER_IP" "$SSH_KEY"
 
-    ok "Lab VMs up. Immediate MCP endpoints are live; run './setup.sh lab wait-kd' for KDNET."
+    ok "Lab VMs up. Immediate MCP endpoints are live; :8100 comes up after first break (lab load-mcp)."
     printf '  target   : ssh -i %s %s@%s\n' "$SSH_KEY" "$VM_USER" "$TARGET_IP"
     printf '  debugger : ssh -i %s %s@%s\n' "$SSH_KEY" "$VM_USER" "$DEBUGGER_IP"
     printf '\n'
     printf '  Next: wait for KDNET if you need kernel debugging:\n'
     printf '    ./setup.sh lab wait-kd\n'
     printf '\n'
-    printf '  MCP endpoints:\n'
-    printf '    http://%s:8100/mcp  (debugger — WinDbg kernel debug tools)\n'          "$DEBUGGER_IP"
-    printf '    http://%s:8201/mcp  (debugger — DesktopCommander file/process tools)\n' "$DEBUGGER_IP"
-    printf '    http://%s:8200/mcp  (target   — DesktopCommander file/process tools)\n' "$TARGET_IP"
-    printf '    http://%s:8300/mcp/ (target   — mcp-windbg user-mode debug, trailing slash)\n' "$TARGET_IP"
+    _lab_mcp_table
+}
+
+# Canonical MCP endpoint table — single source of truth for _lab_spawn and
+# _lab_status (which previously printed two divergent tables with different
+# caveats).
+_lab_mcp_table() {
+    printf '  MCP (target):   http://%s:8300/mcp/ mcp-windbg (user-mode debug, LIVE after spawn)\n'  "$TARGET_IP"
+    printf '  MCP (target):   http://%s:8200/mcp  DesktopCommander\n'                                "$TARGET_IP"
+    printf '  MCP (debugger): http://%s:8201/mcp  DesktopCommander\n'                                "$DEBUGGER_IP"
+    printf '  MCP (debugger): http://%s:8100/mcp  WinDbg kernel (live after first crash or load-mcp)\n' "$DEBUGGER_IP"
 }
 
 _lab_start_role() {
@@ -681,10 +687,7 @@ _lab_status() {
     printf '  Lab VMs:\n'
     printf '    %-28s %-15s %s\n' "$TARGET_NAME"   "$TARGET_IP"   "$(vm_state target   2>/dev/null || echo 'not defined')"
     printf '    %-28s %-15s %s\n' "$DEBUGGER_NAME" "$DEBUGGER_IP" "$(vm_state debugger 2>/dev/null || echo 'not defined')"
-    printf '  MCP (target):   http://%s:8300/mcp/ mcp-windbg (user-mode debug, LIVE after spawn)\n'  "$TARGET_IP"
-    printf '  MCP (target):   http://%s:8200/mcp  DesktopCommander\n'                                "$TARGET_IP"
-    printf '  MCP (debugger): http://%s:8201/mcp  DesktopCommander\n'                                "$DEBUGGER_IP"
-    printf '  MCP (debugger): http://%s:8100/mcp  WinDbg kernel (live after first crash or load-mcp)\n' "$DEBUGGER_IP"
+    _lab_mcp_table
     printf '  KDNET:          target port 50000, key 1.2.3.4 (kd auto-connects on target boot)\n\n'
 }
 
