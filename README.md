@@ -109,7 +109,13 @@ cd win11-forge
 ./install-deps.sh vmware   # extra: pin vmnet8 MAC→IP reservations (only if using WINFORGE_BACKEND=vmware)
 ```
 
-### 3. Add Windows ISOs to `vm-images/`
+By default `install-deps.sh` also downloads the Windows 11 LTSC and
+virtio-win ISOs into `vm-images/` if they're missing. If you want to
+provide those ISOs yourself (offline install, internal mirror,
+licensed media), set `WINFORGE_SKIP_ISO_DOWNLOAD=1` before running
+`install-deps.sh` and stage the files manually as shown in step 3.
+
+### 3. Add Windows ISOs to `vm-images/` (only if you skipped the auto-download)
 
 ```bash
 # ~4.8 GB — Windows 11 LTSC 24H2
