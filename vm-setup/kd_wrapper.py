@@ -119,13 +119,17 @@ def _start_kd(cycle):
 
 def _start_http():
     log.info(f"Starting HTTP MCP server on port {HTTP_PORT}")
-    out = open(str(LOG_DIR / "mcp-http.out.log"), "a")
-    err = open(str(LOG_DIR / "mcp-http.err.log"), "a")
-    return subprocess.Popen(
-        [PY, HTTP_SCRIPT, "--port", str(HTTP_PORT), "--host", "0.0.0.0"],
-        cwd=str(pathlib.Path(HTTP_SCRIPT).parent),
-        stdout=out, stderr=err,
-    )
+    try:
+        out = open(str(LOG_DIR / "mcp-http.out.log"), "a")
+        err = open(str(LOG_DIR / "mcp-http.err.log"), "a")
+        return subprocess.Popen(
+            [PY, HTTP_SCRIPT, "--port", str(HTTP_PORT), "--host", "0.0.0.0"],
+            cwd=str(pathlib.Path(HTTP_SCRIPT).parent),
+            stdout=out, stderr=err,
+        )
+    except Exception as e:
+        log.warning(f"_start_http failed: {e}; will retry next iteration")
+        return None
 
 
 def _wait_for_kd_connect(proc, cycle):
@@ -287,8 +291,9 @@ def run():
             log.info(f"[cycle {cycle}] Pipe ready - starting HTTP MCP server")
             if _http_proc is None or _http_proc.poll() is not None:
                 _http_proc = _start_http()
-                log.info(f"[cycle {cycle}] HTTP server pid: {_http_proc.pid}")
-                log.info(f"[cycle {cycle}] MCP endpoint: http://0.0.0.0:{HTTP_PORT}/mcp")
+                if _http_proc is not None:
+                    log.info(f"[cycle {cycle}] HTTP server pid: {_http_proc.pid}")
+                    log.info(f"[cycle {cycle}] MCP endpoint: http://0.0.0.0:{HTTP_PORT}/mcp")
         else:
             log.info(f"[cycle {cycle}] No pipe yet - waiting for first break to load extension")
             log.info(f"[cycle {cycle}] Trigger: run a PoC (crash) or './setup.sh lab load-mcp' (NtSystemDebugControl)")
@@ -307,8 +312,9 @@ def run():
             if _http_proc is None and _pipe_exists():
                 log.info(f"[cycle {cycle}] Pipe appeared late - starting HTTP MCP server")
                 _http_proc = _start_http()
-                log.info(f"[cycle {cycle}] HTTP server pid: {_http_proc.pid}")
-                log.info(f"[cycle {cycle}] MCP endpoint: http://0.0.0.0:{HTTP_PORT}/mcp")
+                if _http_proc is not None:
+                    log.info(f"[cycle {cycle}] HTTP server pid: {_http_proc.pid}")
+                    log.info(f"[cycle {cycle}] MCP endpoint: http://0.0.0.0:{HTTP_PORT}/mcp")
 
             # Restart HTTP if it died but kd is still alive
             if _http_proc is not None and _http_proc.poll() is not None:
@@ -316,7 +322,8 @@ def run():
                 time.sleep(HTTP_RESTART_DELAY)
                 if _pipe_exists():
                     _http_proc = _start_http()
-                    log.info(f"[cycle {cycle}] HTTP restarted, pid: {_http_proc.pid}")
+                    if _http_proc is not None:
+                        log.info(f"[cycle {cycle}] HTTP restarted, pid: {_http_proc.pid}")
                 else:
                     _http_proc = None
 
