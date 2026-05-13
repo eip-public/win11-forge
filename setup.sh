@@ -498,16 +498,14 @@ _lab_load_mcp() {
     # timeout 10 around each attempt guards against a hung single session
     # (see _lab_wait_ssh comment for the underlying failure mode).
     log "Waiting for target SSH (confirms kernel fully initialized)..."
-    local i
+    local i ssh_up=false
     for i in $(seq 1 24); do
         timeout 10 sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             -o ConnectTimeout=3 -o LogLevel=ERROR "$VM_USER@$TARGET_IP" 'echo ok' \
-            >/dev/null 2>&1 && break
+            >/dev/null 2>&1 && { ssh_up=true; break; }
         sleep 5
     done
-    timeout 10 sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        -o ConnectTimeout=3 -o LogLevel=ERROR "$VM_USER@$TARGET_IP" 'echo ok' \
-        >/dev/null 2>&1 || die "Target SSH not up — wait for full boot first"
+    $ssh_up || die "Target SSH not up — wait for full boot first"
 
     # Trigger kernel break via NtSystemDebugControl(SysDbgBreakPoint=6) on the target.
     # Multi-line PowerShell fails over SSH (cmd.exe shell): SCP the script and run it.
@@ -552,7 +550,7 @@ _lab_load_mcp() {
         printf '  MCP endpoint: http://%s:%s/mcp\n' "$DEBUGGER_IP" "8100"
         printf '  Target still running — use MCP to set breakpoints before triggering the bug\n'
     else
-        warn "MCP endpoint did not come up within 60s"
+        warn "MCP endpoint did not come up within 180s"
         warn "Check kd_wrapper.log on $DEBUGGER_IP for errors"
         die "MCP load failed — HTTP endpoint not responding after break"
     fi
