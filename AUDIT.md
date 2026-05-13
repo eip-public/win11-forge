@@ -7,6 +7,10 @@ Read-only review of code, structure, and documentation cleanliness across
 Findings ordered by category, severity within category. Every claim is
 file:line citable.
 
+A **Status tracker** at the bottom of this file records which findings have
+been closed, in which commit, and which are batched for a later teardown +
+gold-rebuild cycle. Update it as fixes land.
+
 ---
 
 ## Real bugs
@@ -531,3 +535,84 @@ System.Net.WebClient).DownloadString(...))` for chocolatey
   ([vm-setup/seal-vm-gold.sh:279-282](vm-setup/seal-vm-gold.sh)).
 - Bats stubs use proper `set -euo pipefail` inside the mock scripts.
   Test infrastructure itself is clean.
+
+---
+
+## Status tracker
+
+Last updated: 2026-05-13.
+
+Legend:
+- **fixed** — landed in commit; lab-validated.
+- **partial** — some sites fixed; remaining sites listed.
+- **open / Phase A** — lab-exercisable in current spawn state. Next-up.
+- **open / Phase B** — architecture refactor; lab-exercisable via `lab destroy && lab spawn` cycle. No gold rebuild needed.
+- **open / Phase C** — needs a full `setup.sh install` (gold rebuild, multi-hour). Batch these and ship in one rebuild cycle.
+- **open / Phase D** — host-install path (`install-deps.sh`); test on a clean host or in a sandbox.
+- **won't fix** — audit explicitly marked "note only" or out of scope.
+
+### Real bugs (13 / 13 closed)
+
+- create-vm.sh VHD branch ignores --user/--password — **fixed** in cbefb34
+- backend/kvm.sh vm_state non-normalized — **fixed** in 1b48ad4
+- _lab_load_mcp reports wrong timeout — **fixed** in 47af367
+- _lab_spawn claims :8100 live immediately — **fixed** in de61d52
+- kd_wrapper.py log files truncated on every restart — **fixed** in ad94c15
+- _prompt_monitor re-reads the entire kd.out.log — **fixed** in 5d95e48
+- _start_http exception kills supervisor — **fixed** in ef2ed1e
+- kd_wrapper.py dead variable last_log_size — **fixed** in 5d95e48
+- _lab_load_mcp runs SSH wait twice — **fixed** in 47af367
+- cmd_lab overrides parent-shell LAB_SPAWN_GUI — **fixed** in 8adb93f
+- role-bootstrap-target.sh mixes cmd and PowerShell — **fixed** in a4eb9e1 (line 161) + edaff16 (line 150, same pattern, swept together)
+- create-vm.sh chmod-walks up parent directories — **fixed** in db0419a
+- vmware.sh subnet detection one-shot at source — **fixed** in 383d103
+
+### Resource & error-handling gaps (3 / 7 closed, 2 partial, 2 deferred)
+
+- Pervasive `|| true` swallowing virsh failures — **partial**:
+    - KVM lab paths (backend/kvm.sh: 106-107, 168, 176-177) — **fixed** in 0129503
+    - setup.sh single-VM mode (295, 330, 337, 344, 351-355) — **open / Phase C** (only fires in `setup.sh start/stop/destroy/reset` against a single-VM domain; not exercised by lab paths)
+    - seal-vm-gold.sh (241, 244) — **open / Phase C**
+    - create-vm.sh (141-146) — **open / Phase C**
+- Schedules tasks `/Run` never verified to start — **fixed** in 70bf563
+- install-winforge-bootstrap.ps1 swallows OpenSSH installer failure — **open / Phase C**
+- kd_wrapper.py opens log files without a context manager — **partial**:
+    - `_prompt_monitor` log_fh — **fixed** in 6f24798 (try/finally)
+    - `_start_http` out/err handles — **open / Phase A**
+- setup-vm.sh mcp-windbg install isn't gated on success — **open / Phase C**
+- seal-vm-gold.sh wait_for_ssh silently no-ops with bad config — **open / Phase C**
+- install-deps.sh install_binexport_plugin skips silently — **open / Phase D**
+
+### Architecture & duplication (0 / 8 closed)
+
+- Inline xml.etree heredoc duplicated — **open / Phase B** (extract `vm-setup/lib/set-disk-source.py`)
+- Three sources of truth for VM MAC addresses — **open / Phase B** (extract `vm-setup/macs.env`)
+- setup-vm.sh long inline PowerShell heredocs — **open / Phase C** (per-phase `.ps1` files; needs gold rebuild to validate)
+- setup-vm.sh runs `iex` for chocolatey — **won't fix** (audit marked "note only"; documented chocolatey flow)
+- Duplicate ssh-helper functions across 4 scripts — **open / Phase B** (extract `vm-setup/lib/ssh-helpers.sh`)
+- Three different logging styles across bash scripts — **open / Phase B** (extract `vm-setup/lib/log.sh`)
+- Two sets of constants for gold image name and IP defaults + dead `CURRENT_GOLD_IP` — **open / Phase B**
+- Stale name PHASE0_DIR — **open / Phase B** (rename to REPO_ROOT across files)
+- dc_set JSON-quoting helper duplicated — **open / Phase B**
+
+### Style & convention drift (3 / 9 closed)
+
+- `set -E` missing from every executable bash script — **open / Phase C** (the `-E` matters most in seal-vm-gold.sh's ERR trap; full validation needs gold rebuild)
+- Mixed shebangs — **open / Phase C** (fold in with the `-Eeuo` sweep — every script gets touched once)
+- Two vm-setup/*.ps1 files miss strict mode — **open / Phase C** (`setup-desktop-commander.ps1` runs during gold-build inside the guest)
+- Three different Python logging strategies across 3 scripts — **open / Phase C** (the in-guest scripts run only in the running lab; cleanest to validate via fresh spawn off a rebuilt gold)
+- Python: missing type hints, multi-import line — **open / Phase B** (kd_wrapper.py style; behavior-preserving)
+- vm-setup/target_mcp_http.py dead `HERE` — **fixed** in 498b948
+- setup.sh help command parsing brittle — **fixed** in 4c5f53f
+- _lab_status / _lab_spawn divergent endpoint tables — **fixed** in de61d52
+- setup.sh lab-flag parser doesn't shift consumed flags — **open / Phase A**
+- _lab_kd_connected opens a fresh SSH connection on every poll — **open / Phase A** (ControlMaster=auto)
+- Tests cover ~10% of setup.sh surface — **open / separate effort** (`tests/*.bats` expansion)
+
+### Discovered outside the audit (also fixed)
+
+- create-vm.sh `-f vpc` hardcoded breaks VHDX inputs — **fixed** in aee7315
+- role-bootstrap-target.sh:150 HAS_MCP_WINDBG raw-PS over ssh_cmd — **fixed** in edaff16 (swept with role-bootstrap-target.sh:161)
+- setup-vm.sh:250 choco-reboot registry check silently broken — **fixed** in edaff16 (\\" escape doesn't work in outer-PS-as-shell context)
+- New standalone helpers fetch-windev-vhd.sh + fetch-isos.sh — **added** in 0abff60
+- Docs trees refreshed + VHD/VHDX path noted — **fixed** in 708ec80

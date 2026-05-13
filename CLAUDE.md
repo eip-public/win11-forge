@@ -191,6 +191,31 @@ rebuild the gold and confirm the lab still spawns clean:
 ./setup.sh lab status
 ```
 
+### Test rhythm for batched fixes
+
+When working through a backlog of small changes (e.g. an audit pass),
+split by what each fix requires to validate:
+
+- **Lab-exercisable** — the fix runs against a spawned lab pair.
+  Validate with `./setup.sh lab destroy && ./setup.sh lab spawn` (or
+  a more targeted subcommand). Ship one fix per commit, ~5–10 min per
+  cycle. Refactors that touch backend-dispatch / role-bootstrap fall
+  here too — the spawn cycle re-exercises everything.
+
+- **Gold-build-only** — the fix lives in `unattend-iso/`, `setup-vm.sh`,
+  `seal-vm-gold.sh`, `install-winforge-bootstrap.ps1`, or the
+  cleanup branches of `create-vm.sh`. Don't try to test these in
+  isolation. **Batch them**, then ship the whole batch in a single
+  `./setup.sh install` rebuild. One multi-hour gold-rebuild cycle
+  validates the batch collectively.
+
+- **Host-install path** — fixes in `install-deps.sh`. Test on a clean
+  host or a sandbox; orthogonal to the lab and the gold.
+
+`AUDIT.md` has a "Status tracker" appendix that records which findings
+are landed and which are batched for the next gold-rebuild cycle.
+Update it as fixes land.
+
 ## Style
 
 - `set -Eeuo pipefail` at the top of every bash script.
