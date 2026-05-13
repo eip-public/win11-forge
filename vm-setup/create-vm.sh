@@ -221,8 +221,8 @@ if [[ "$IS_VHD" == "true" ]]; then
     ELAPSED=$((ELAPSED + 15))
     DHCP_IP=$(sudo virsh net-dhcp-leases default 2>/dev/null | grep -oP '192\.168\.122\.\d+' | head -1)
     TARGET_IP="${DHCP_IP:-$VM_IP}"
-    if timeout 10 sshpass -p 'forge123' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-       -o ConnectTimeout=3 -o LogLevel=ERROR "forge@$TARGET_IP" "echo OK" 2>/dev/null | grep -q OK; then
+    if timeout 10 sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+       -o ConnectTimeout=3 -o LogLevel=ERROR "$VM_USER@$TARGET_IP" "echo OK" 2>/dev/null | grep -q OK; then
       echo "[+] SSH available at $TARGET_IP!"
       VM_IP="$TARGET_IP"
       break
