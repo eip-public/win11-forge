@@ -168,9 +168,12 @@ else
 fi
 
 # ── Fix permissions for libvirt-qemu access ────────────────────────
+# Walk parent dirs adding o+rx so the qemu user can traverse to the qcow2s.
+# Stop at $HOME (not /) — walking past $HOME silently widened world-read
+# across the user's home and any sibling files under it.
 
 DIR="$IMAGES_DIR"
-while [[ "$DIR" != "/" ]]; do
+while [[ "$DIR" != "/" && "$DIR" != "$HOME" ]]; do
   chmod o+rx "$DIR" 2>/dev/null || true
   DIR=$(dirname "$DIR")
 done
