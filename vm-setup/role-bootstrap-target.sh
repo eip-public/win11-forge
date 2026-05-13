@@ -47,6 +47,31 @@ wait_for_ssh() {
     return 1
 }
 
+# Verify a scheduled task actually launched and entered Running state.
+# `schtasks /Run` returns 0 the moment the task launcher fires — it doesn't
+# tell us whether the action (python.exe, etc.) actually started. If the
+# action immediately fails (missing interpreter, port conflict, etc.) the
+# task drops back to "Ready" with a non-zero Last Result, and silence here
+# leaves the lab looking healthy when it isn't.
+# For long-running actions, Status=Running and Last Result=267009 (0x41301
+# SCHED_S_TASK_RUNNING) is the healthy state.
+verify_schtask_running() {
+    local task="$1" max="${2:-10}" i status
+    for i in $(seq 1 "$max"); do
+        # `|| true` on the assignment: under set -euo pipefail an ssh failure
+        # inside $(...) would otherwise kill the caller before this loop's
+        # retry/timeout branch can run.
+        status=$(ssh_cmd "schtasks /Query /TN \"$task\" /V /FO LIST" 2>/dev/null \
+            | tr -d '\r' | awk -F: '/^Status:/ {sub(/^[ \t]+/,"",$2); print $2; exit}') || true
+        [[ "$status" == "Running" ]] && { echo "[+] $task is running"; return 0; }
+        sleep 1
+    done
+    echo "[-] $task did not reach Status=Running within ${max}s (last='$status')" >&2
+    ssh_cmd "schtasks /Query /TN \"$task\" /V /FO LIST" 2>/dev/null \
+        | tr -d '\r' | grep -iE "Status|Last Result|Last Run Time" >&2 || true
+    return 1
+}
+
 # The debugger VM's IP — kd.exe runs there and target sends KDNET packets to it.
 # Passed as third argument; defaults to DEBUGGER_IP env var or a hardcoded fallback.
 KDNET_HOST="${3:-${DEBUGGER_IP:-192.168.122.101}}"
@@ -91,6 +116,7 @@ echo "[+] TargetDesktopBoot registered"
 
 echo "[*] Starting TargetDesktopBoot"
 ssh_cmd 'schtasks /Run /TN TargetDesktopBoot' >/dev/null
+verify_schtask_running TargetDesktopBoot
 
 # Wait for HTTP endpoint to be reachable
 echo "[*] Waiting for DesktopCommander MCP on :8200..."
@@ -188,6 +214,7 @@ echo "[+] TargetMcpWindbgBoot registered"
 
 echo "[*] Starting TargetMcpWindbgBoot"
 ssh_cmd 'schtasks /Run /TN TargetMcpWindbgBoot' >/dev/null
+verify_schtask_running TargetMcpWindbgBoot
 
 echo "[*] Waiting for mcp-windbg on :8300..."
 for i in $(seq 1 20); do

@@ -73,6 +73,31 @@ wait_for_ssh() {
     return 1
 }
 
+# Verify a scheduled task actually launched and entered Running state.
+# `schtasks /Run` returns 0 the moment the task launcher fires — it doesn't
+# tell us whether the action (python.exe, etc.) actually started. DebuggerBoot
+# has no downstream HTTP probe (the wrapper waits for kernel break before
+# starting HTTP), so if kd_wrapper.py python-crashes at launch this was the
+# only signal we had — and we weren't checking it.
+# For long-running actions, Status=Running and Last Result=267009 (0x41301
+# SCHED_S_TASK_RUNNING) is the healthy state.
+verify_schtask_running() {
+    local task="$1" max="${2:-10}" i status
+    for i in $(seq 1 "$max"); do
+        # `|| true` on the assignment: under set -euo pipefail an ssh failure
+        # inside $(...) would otherwise kill the caller before this loop's
+        # retry/timeout branch can run.
+        status=$(ssh_cmd "schtasks /Query /TN \"$task\" /V /FO LIST" 2>/dev/null \
+            | tr -d '\r' | awk -F: '/^Status:/ {sub(/^[ \t]+/,"",$2); print $2; exit}') || true
+        [[ "$status" == "Running" ]] && { echo "[+] $task is running"; return 0; }
+        sleep 1
+    done
+    echo "[-] $task did not reach Status=Running within ${max}s (last='$status')" >&2
+    ssh_cmd "schtasks /Query /TN \"$task\" /V /FO LIST" 2>/dev/null \
+        | tr -d '\r' | grep -iE "Status|Last Result|Last Run Time" >&2 || true
+    return 1
+}
+
 ok()   { printf '\033[1;32m[+]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[!]\033[0m %s\n' "$*" >&2; }
 
@@ -104,6 +129,7 @@ ok "DebuggerBoot task registered"
 
 echo "[*] Starting DebuggerBoot now"
 retry_ssh_cmd 'schtasks /Run /TN DebuggerBoot' >/dev/null
+verify_schtask_running DebuggerBoot
 
 # Give the wrapper time to start kd.exe and attempt the KDNET connection.
 # The full connection + pipe + HTTP takes up to 5 min after the target boots;
@@ -134,6 +160,7 @@ ok "DebuggerDesktopBoot task registered"
 
 echo "[*] Starting DebuggerDesktopBoot now"
 retry_ssh_cmd 'schtasks /Run /TN DebuggerDesktopBoot' >/dev/null
+verify_schtask_running DebuggerDesktopBoot
 
 # Wait for HTTP up then configure via API
 echo "[*] Waiting for DesktopCommander MCP on :8201..."
