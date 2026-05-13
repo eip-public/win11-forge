@@ -203,75 +203,79 @@ def _prompt_monitor(proc, cycle, pipe_ready_event):
     except OSError:
         log_fh = None
 
-    while not _shutdown.is_set() and proc.poll() is None:
-        if log_fh is None:
+    # try/finally wrap so log_fh is closed even if an unhandled exception
+    # escapes the loop. The body intentionally catches all in-loop failure
+    # modes already; this is belt-and-braces for surprises (audit §2).
+    try:
+        while not _shutdown.is_set() and proc.poll() is None:
+            if log_fh is None:
+                try:
+                    log_fh = open(log_path, "r", encoding="utf-8", errors="replace")
+                except OSError:
+                    time.sleep(1)
+                    continue
+
             try:
-                log_fh = open(log_path, "r", encoding="utf-8", errors="replace")
+                current_size = os.path.getsize(log_path)
             except OSError:
                 time.sleep(1)
                 continue
 
-        try:
-            current_size = os.path.getsize(log_path)
-        except OSError:
-            time.sleep(1)
-            continue
+            if current_size > last_log_size:
+                try:
+                    log_fh.seek(last_log_size)
+                    chunk = log_fh.read()
+                except OSError:
+                    time.sleep(1)
+                    continue
 
-        if current_size > last_log_size:
-            try:
-                log_fh.seek(last_log_size)
-                chunk = log_fh.read()
-            except OSError:
-                time.sleep(1)
-                continue
+                window = carryover + chunk
+                carryover = window[-2:]
+                last_log_size = current_size
 
-            window = carryover + chunk
-            carryover = window[-2:]
-            last_log_size = current_size
+                if "kd>" in window:
+                    log.info(f"[cycle {cycle}] kd prompt detected")
 
-            if "kd>" in window:
-                log.info(f"[cycle {cycle}] kd prompt detected")
-
-                hold = HOLD_FLAG.exists()
-                if _pipe_exists():
-                    if hold:
-                        # Agent is doing interactive debug work — do NOT resume.
-                        # The agent will clear the flag + issue `g` via MCP when done.
-                        log.info(f"[cycle {cycle}] Hold flag present — leaving target at break (pipe)")
+                    hold = HOLD_FLAG.exists()
+                    if _pipe_exists():
+                        if hold:
+                            # Agent is doing interactive debug work — do NOT resume.
+                            # The agent will clear the flag + issue `g` via MCP when done.
+                            log.info(f"[cycle {cycle}] Hold flag present — leaving target at break (pipe)")
+                        else:
+                            # Extension already loaded from a prior break - just resume
+                            log.info(f"[cycle {cycle}] Extension already loaded (pipe exists) - sending g")
+                            send("g")
+                    elif has_mcp and not injected:
+                        # First break (or pipe gone) with extension not loaded - (re)inject now
+                        log.info(f"[cycle {cycle}] Injecting: .load -> mcpstart{'' if hold else ' -> g'}")
+                        send(f".load {DLL}", delay=2)
+                        send("mcpstart", delay=2)
+                        if hold:
+                            log.info(f"[cycle {cycle}] Hold flag present — extension loaded, leaving target at break")
+                        else:
+                            send("g", delay=1)
+                        injected = True
+                        log.info(f"[cycle {cycle}] Commands injected - waiting for pipe")
                     else:
-                        # Extension already loaded from a prior break - just resume
-                        log.info(f"[cycle {cycle}] Extension already loaded (pipe exists) - sending g")
-                        send("g")
-                elif has_mcp and not injected:
-                    # First break (or pipe gone) with extension not loaded - (re)inject now
-                    log.info(f"[cycle {cycle}] Injecting: .load -> mcpstart{'' if hold else ' -> g'}")
-                    send(f".load {DLL}", delay=2)
-                    send("mcpstart", delay=2)
-                    if hold:
-                        log.info(f"[cycle {cycle}] Hold flag present — extension loaded, leaving target at break")
-                    else:
-                        send("g", delay=1)
-                    injected = True
-                    log.info(f"[cycle {cycle}] Commands injected - waiting for pipe")
-                else:
-                    # No MCP or already tried - just resume (unless held)
-                    if hold:
-                        log.info(f"[cycle {cycle}] Hold flag present — leaving target at break (fallback)")
-                    else:
-                        send("g")
+                        # No MCP or already tried - just resume (unless held)
+                        if hold:
+                            log.info(f"[cycle {cycle}] Hold flag present — leaving target at break (fallback)")
+                        else:
+                            send("g")
 
-        # Check if pipe appeared after injection
-        if injected and _pipe_exists():
-            log.info(f"[cycle {cycle}] Pipe appeared after injection!")
-            pipe_ready_event.set()
-            # Keep monitoring for subsequent breaks (re-inject if pipe disappears)
-            injected = False   # allow re-injection if extension unloads
+            # Check if pipe appeared after injection
+            if injected and _pipe_exists():
+                log.info(f"[cycle {cycle}] Pipe appeared after injection!")
+                pipe_ready_event.set()
+                # Keep monitoring for subsequent breaks (re-inject if pipe disappears)
+                injected = False   # allow re-injection if extension unloads
 
-        time.sleep(0.5)
-
-    if log_fh is not None:
-        try: log_fh.close()
-        except Exception: pass
+            time.sleep(0.5)
+    finally:
+        if log_fh is not None:
+            try: log_fh.close()
+            except Exception: pass
 
     log.info(f"[cycle {cycle}] Prompt monitor stopped")
 
