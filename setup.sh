@@ -699,7 +699,9 @@ case "$cmd" in
     install|status|reset|start|stop|destroy) "cmd_$cmd" ;;
     lab) cmd_lab "$@" ;;
     -h|--help|help)
-        sed -n '2,/^set -euo/p' "$0" | sed 's/^# \?//' | head -n -2
+        # Stop at `set -[E]euo pipefail` — tolerant of an eventual -Eeuo sweep
+        # that the audit flagged as missing.
+        sed -n '2,/^set -.*euo/p' "$0" | sed 's/^# \?//' | head -n -2
         ;;
     *) die "Unknown subcommand: $cmd (try: install|status|reset|start|stop|destroy|lab <spawn|start|stop|reset|destroy|status>)" ;;
 esac
