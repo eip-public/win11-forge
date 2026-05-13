@@ -18,8 +18,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-HERE = Path(__file__).parent
-
 NODE   = r"C:\Program Files\nodejs\node.exe"
 DCMCP  = r"C:\winforge\node_modules\@wonderwhy-er\desktop-commander\dist\index.js"
 LOG_DIR = Path(r"C:\winforge\logs")
