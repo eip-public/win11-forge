@@ -384,8 +384,9 @@ cmd_lab() {
     # --gui / --nogui flags (consumed by spawn/start/reset; ignored elsewhere).
     # Default: gui for vmware (the user likely picked it *to* see the console);
     # nogui for kvm (headless is the libvirt/virt-manager convention).
-    local arg
-    if [[ "$WINFORGE_BACKEND" == "vmware" ]]; then LAB_SPAWN_GUI=1; else LAB_SPAWN_GUI=0; fi
+    local arg default_gui=0
+    [[ "$WINFORGE_BACKEND" == "vmware" ]] && default_gui=1
+    LAB_SPAWN_GUI="${LAB_SPAWN_GUI:-$default_gui}"
     for arg in "$@"; do
         case "$arg" in
             --gui)   LAB_SPAWN_GUI=1 ;;
