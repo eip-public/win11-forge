@@ -151,7 +151,10 @@ fi
 if [[ "$IS_VHD" == "true" ]]; then
   echo "[*] Converting VHD to QCOW2 (this may take a few minutes)..."
   rm -f "$QCOW2"
-  qemu-img convert -f vpc -O qcow2 "$ISO" "$QCOW2"
+  # No -f: qemu-img auto-detects vpc (old .vhd) vs vhdx (Microsoft dev VMs ship
+  # as .vhdx). Hardcoding -f vpc silently rejected every .vhdx with
+  # "invalid VPC image".
+  qemu-img convert -O qcow2 "$ISO" "$QCOW2"
   # Resize if the VHD is smaller than requested
   CURRENT_SIZE=$(qemu-img info --output=json "$QCOW2" | python3 -c "import sys,json; print(json.load(sys.stdin)['virtual-size'])" 2>/dev/null || echo 0)
   REQUESTED_BYTES=$(numfmt --from=iec "$DISK_SIZE" 2>/dev/null || echo 0)
