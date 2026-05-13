@@ -43,6 +43,29 @@ DEBUGGER_MAC="52:54:00:22:22:22"
 
 backend_name() { echo "kvm"; }
 
+# Wrapper for "cleanup" virsh calls (destroy/undefine/snapshot-delete) that
+# previously had `|| true` masking real failures. Tolerates the few legitimate
+# "already in target state" cases (not running, already gone, no snapshots);
+# warns to stderr on anything else so the user sees the real libvirt error
+# instead of a downstream collision ("domain is already defined", etc.).
+# Always returns 0 — callers should rely on the warning text, not exit code.
+_kvm_virsh_or_warn() {
+    # `out="$(...)"` without an `|| ...` clause would trip the caller's `set -e`
+    # the moment virsh exits non-zero — *before* this function can inspect the
+    # exit code and decide whether to warn or stay silent. Capture rc via the
+    # `|| rc=$?` idiom instead.
+    local out rc=0
+    out="$(virsh "$@" 2>&1)" || rc=$?
+    (( rc == 0 )) && return 0
+    case "$out" in
+        *"Domain not found"*|*"failed to get domain"*) ;;
+        *"is not running"*|*"already inactive"*) ;;
+        *"no snapshot"*|*"snapshot file does not exist"*) ;;
+        *) printf '\033[1;33m[!]\033[0m kvm: virsh %s — %s\n' "$*" "${out//$'\n'/ | }" >&2 ;;
+    esac
+    return 0
+}
+
 # ── Role -> internal mapping ──────────────────────────────────────
 
 _kvm_role_to_name() {
@@ -103,8 +126,8 @@ vm_provision() {
     [[ -f "$gold" ]] || { echo "No gold at $gold. Run './setup.sh install' first." >&2; return 1; }
 
     if virsh dominfo "$vm_name" >/dev/null 2>&1; then
-        virsh destroy "$vm_name" >/dev/null 2>&1 || true
-        virsh undefine "$vm_name" --nvram >/dev/null 2>&1 || true
+        _kvm_virsh_or_warn destroy "$vm_name"
+        _kvm_virsh_or_warn undefine "$vm_name" --nvram
     fi
 
     rm -f "$overlay" "$nvram"
@@ -165,7 +188,7 @@ vm_force_stop() {
     local role="$1"
     local vm_name; vm_name="$(_kvm_role_to_name "$role")" || return 1
     if virsh dominfo "$vm_name" >/dev/null 2>&1; then
-        virsh destroy "$vm_name" >/dev/null 2>&1 || true
+        _kvm_virsh_or_warn destroy "$vm_name"
     fi
 }
 
@@ -173,8 +196,8 @@ vm_undefine() {
     local role="$1"
     local vm_name; vm_name="$(_kvm_role_to_name "$role")" || return 1
     if virsh dominfo "$vm_name" >/dev/null 2>&1; then
-        virsh destroy "$vm_name" >/dev/null 2>&1 || true
-        virsh undefine "$vm_name" --nvram >/dev/null 2>&1 || true
+        _kvm_virsh_or_warn destroy "$vm_name"
+        _kvm_virsh_or_warn undefine "$vm_name" --nvram
     fi
     rm -f "$IMAGES_DIR/${vm_name}.qcow2" "$IMAGES_DIR/${vm_name}-OVMF_VARS.fd"
 }
