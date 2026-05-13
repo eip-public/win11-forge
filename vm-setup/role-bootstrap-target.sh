@@ -147,7 +147,15 @@ fi
 # the submodule is absent from that vintage, so `mcp-windbg --help` crashes
 # with `ModuleNotFoundError`. Detect that and re-install from the current
 # vendored source, which now includes the stub module.
-HAS_MCP_WINDBG=$(ssh_cmd 'if ((Get-Command mcp-windbg -EA SilentlyContinue) -and (Test-Path "C:\Python314\Lib\site-packages\mcp_windbg\prompts\__init__.py")) { "yes" } else { "no" }' 2>/dev/null | tr -d '\r' | tail -1)
+# Wrap in `powershell -NoProfile -Command` (same reason as the mcp-windbg
+# stop on line ~166) and switch to exit-code signalling so we don't need any
+# inner double quotes or variables — both of which the outer powershell-as-
+# DefaultShell would otherwise mangle.
+if ssh_cmd 'powershell -NoProfile -Command "if ((Get-Command mcp-windbg -EA SilentlyContinue) -and (Test-Path C:\Python314\Lib\site-packages\mcp_windbg\prompts\__init__.py)) { exit 0 } else { exit 1 }"' 2>/dev/null; then
+    HAS_MCP_WINDBG=yes
+else
+    HAS_MCP_WINDBG=no
+fi
 
 if [[ "$HAS_MCP_WINDBG" != "yes" ]]; then
     echo "[!] mcp-windbg CLI not installed in gold — falling back to per-spawn install"

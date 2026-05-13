@@ -247,7 +247,15 @@ fi
 
 if printf '%s\n' "$CHOCOLATEY_BOOTSTRAP_OUTPUT" | tr -d '\r' | grep -Eq 'reboot is required|need to restart this machine prior to using choco'; then
   CHOCO_REBOOT_REQUIRED=true
-elif ssh_cmd 'powershell -NoProfile -Command "$choco = \"C:\\ProgramData\\chocolatey\\bin\\choco.exe\"; $rebootPending = (Test-Path \"HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired\") -or (Test-Path \"HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending\") -or ($null -ne (Get-ItemProperty -Path \"HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\" -Name PendingFileRenameOperations -ErrorAction SilentlyContinue)); if ((Test-Path $choco) -and $rebootPending) { Write-Host REBOOT_REQUIRED }"' 2>/dev/null | tr -d '\r' | grep -q '^REBOOT_REQUIRED$'; then
+# Registry-based reboot check. The previous version embedded $-variables and \"
+# escapes inside an outer 'powershell -NoProfile -Command "..."'. With Windows
+# OpenSSH DefaultShell set to powershell.exe, the OUTER powershell evaluates
+# that "..." as a PowerShell string literal first — it tries to expand $choco
+# / $rebootPending / $null and treats \" as a string terminator. Result: every
+# invocation died with "string missing terminator" and the elif silently fell
+# through. Rewritten to use exit codes, single-quoted PS strings (which survive
+# outer-PS evaluation unchanged), and no $-variables.
+elif ssh_cmd 'powershell -NoProfile -Command "if ((Test-Path C:\ProgramData\chocolatey\bin\choco.exe) -and ((Test-Path '"'"'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'"'"') -or (Test-Path '"'"'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'"'"') -or (Get-ItemProperty -Path '"'"'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager'"'"' -Name PendingFileRenameOperations -ErrorAction SilentlyContinue))) { exit 0 } else { exit 1 }"' 2>/dev/null; then
   CHOCO_REBOOT_REQUIRED=true
 else
   CHOCO_REBOOT_REQUIRED=false
