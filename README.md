@@ -140,6 +140,16 @@ that disables firewall / UAC / Defender and locks Windows Update so the
 target build stays fixed across reboots. Seals to a flat gold qcow2.
 Subsequent lab spawns take minutes, not hours.
 
+> **Alternate gold source:** `vm-setup/create-vm.sh` also accepts a
+> `.vhd` / `.vhdx` (e.g. Microsoft's free Windows 11 dev VHDX —
+> `vm-setup/fetch-windev-vhd.sh` downloads it). Auto-detection drives
+> the VHD branch, which converts the image to qcow2 and boots it via
+> legacy BIOS without going through Windows unattended install. Note:
+> the dev VHDX boots into the OOBE / `User` account; SSH and the
+> `forge` account aren't pre-configured, so the rest of `./setup.sh
+> install` won't run unattended off it — use this path for ad-hoc
+> exploration, not the full pipeline.
+
 The installer uses guest-side readiness states instead of fixed sleeps:
 `create-vm.sh` waits for the unattended bootstrap to report
 `bootstrap_ready`, `setup-vm.sh` writes `tools_ready` only after tool
@@ -259,7 +269,7 @@ win11-forge/
 ├── setup.sh                  # orchestrator — all subcommands
 ├── install-deps.sh           # host dependency installer/checker
 ├── vm-setup/
-│   ├── create-vm.sh          # virt-install wrapper (ISO → running VM)
+│   ├── create-vm.sh          # virt-install wrapper (ISO or .vhd/.vhdx → running VM)
 │   ├── seal-vm-gold.sh       # flatten working disk → gold + verify-restore
 │   ├── setup-vm.sh           # post-install tool setup (runs in guest)
 │   ├── autounattend.xml      # Windows unattended install answers
@@ -270,6 +280,10 @@ win11-forge/
 │   ├── setup-desktop-commander.ps1  # writes DesktopCommander config for SYSTEM profile
 │   ├── role-bootstrap-target.sh    # bcdedit KDNET + TargetDesktopBoot task
 │   ├── role-bootstrap-debugger.sh  # uploads kd_wrapper+run_http, DebuggerBoot
+│   ├── qcow2-to-vmware.sh    # gold.qcow2 → gold.vmdk for the VMware backend
+│   ├── fetch-isos.sh         # standalone: stage Win11 LTSC + virtio-win ISOs
+│   ├── fetch-windev-vhd.sh   # standalone: download Microsoft's Win11 dev .vhdx
+│   ├── backend/              # KVM- vs VMware-backend dispatch helpers (kvm.sh, vmware.sh)
 │   └── third-party/
 │       └── mcp-windbg/       # vendored svnscha/mcp-windbg fork (user-mode :8300)
 │                             # see VENDORED.md for our deltas (local-attach support)

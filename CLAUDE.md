@@ -43,7 +43,8 @@ vm-setup/                       guest-side install + lab-host helpers
                                 hardening pass
   seal-vm-gold.sh               turns the post-setup VM into the flat
                                 gold qcow2
-  create-vm.sh                  builds the per-overlay target/debugger
+  create-vm.sh                  builds the per-overlay target/debugger;
+                                accepts either an ISO or a .vhd/.vhdx
   setup-desktop-commander.ps1   guest DC install
   role-bootstrap-target.sh      target VM role bootstrap: KDNET
                                 bcdedit, testsigning, auto-reboot
@@ -55,6 +56,12 @@ vm-setup/                       guest-side install + lab-host helpers
   windbg_mcp_http.py            WinDbg MCP HTTP shim
   qcow2-to-vmware.sh            converts gold.qcow2 -> gold.vmdk for
                                 VMware backend
+  fetch-isos.sh                 standalone fetcher for Win11 LTSC +
+                                virtio-win ISOs (mirrors the logic in
+                                install-deps.sh)
+  fetch-windev-vhd.sh           standalone fetcher for Microsoft's
+                                free Windows 11 dev .vhdx (HyperV
+                                variant); resolves the aka.ms redirect
   backend/                      KVM-vs-VMware dispatch helpers
   third-party/mcp-windbg/       vendored upstream fork
 
