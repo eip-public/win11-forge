@@ -1,0 +1,57 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local-only / generated
+*.log
+/tmp/
+*.bak
+*.orig
+
+# Secrets — never commit
+.env
+.env.local
+.envrc
+**/secrets/
+*.pem
+*.key
+authorized_keys
+id_*
+
+# Bash temp
+.bash_history
+
+# win11-forge: VM images and SSH keys
+vm-images/
+isos/
+vm-ssh-key
+vm-ssh-key.pub
+
+# win11-forge: lab binaries and large artifacts
+lab/**/*.sys
+lab/**/*.exe
+lab/**/*.dll
+lab/**/*.pe
+lab/**/*.pdb
+**/gzfs/
+*.gzf
+lab/**/json/
+lab/**/symbols/
+pingme.txt
+lab/**/ghidra-proj/
+lab/**/.venv/
+lab/**/bin-*/
+lab/**/bins/
+lab/**/__pycache__/
+lab/**/candidates.json
+
+# in-session scratch — regenerable probes, not deliverables
+lab/**/kd.py
+lab/**/probe_catgrp.py
