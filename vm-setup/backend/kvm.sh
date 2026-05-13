@@ -184,9 +184,15 @@ vm_state() {
     local vm_name; vm_name="$(_kvm_role_to_name "$role")" || return 1
     local s; s="$(virsh domstate "$vm_name" 2>/dev/null)" || { echo "undefined"; return; }
     case "$s" in
-        running)   echo "running" ;;
+        running)    echo "running" ;;
         "shut off") echo "stopped" ;;
-        *)          echo "$s" ;;
+        *)
+            # paused, pmsuspended, "in shutdown", crashed, etc. Treat as "running"
+            # so callers run the destroy/shutdown path (virsh destroy works on any
+            # non-stopped state) instead of skipping. Matches vmware.sh's
+            # three-value contract: running / stopped / undefined.
+            echo "[kvm vm_state] $vm_name in non-canonical state '$s' — treating as running" >&2
+            echo "running" ;;
     esac
 }
 
