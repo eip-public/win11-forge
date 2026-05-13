@@ -158,7 +158,12 @@ if [[ "$HAS_MCP_WINDBG" != "yes" ]]; then
         scp_to "$TARBALL" "C:/winforge/mcp-windbg-src.tar.gz"
         rm -f "$TARBALL"
         # Stop any running mcp-windbg first — pip can't overwrite a locked .exe.
-        ssh_cmd 'schtasks /End /TN TargetMcpWindbgBoot 2>$null ; Get-Process mcp-windbg -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue' >/dev/null 2>&1 || true
+        # Wrap explicitly in `powershell -NoProfile -Command` so this line keeps
+        # working if Windows OpenSSH DefaultShell ever changes off powershell.
+        # Inner `2>$null` was dropped: with powershell as the outer shell it
+        # would expand $null inside the `"..."` arg before the inner powershell
+        # ran. The outer bash `>/dev/null 2>&1 || true` already suppresses output.
+        ssh_cmd 'powershell -NoProfile -Command "schtasks /End /TN TargetMcpWindbgBoot ; Get-Process mcp-windbg -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue"' >/dev/null 2>&1 || true
         ssh_cmd 'powershell -NoProfile -Command "if (Test-Path C:\winforge\mcp-windbg-src) { Remove-Item -Recurse -Force C:\winforge\mcp-windbg-src } ; New-Item -ItemType Directory -Path C:\winforge\mcp-windbg-src | Out-Null ; tar -xzf C:\winforge\mcp-windbg-src.tar.gz -C C:\winforge\mcp-windbg-src ; python -m pip install --quiet --upgrade --force-reinstall --no-deps C:\winforge\mcp-windbg-src"' >/dev/null 2>&1
         echo "[+] mcp-windbg installed on target"
     else
