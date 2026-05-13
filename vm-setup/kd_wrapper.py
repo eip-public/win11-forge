@@ -103,7 +103,7 @@ def _start_kd(cycle):
     if _kd_log_fh:
         try: _kd_log_fh.close()
         except Exception: pass
-    _kd_log_fh = open(_kd_log_path(), "w", encoding="utf-8", errors="replace")
+    _kd_log_fh = open(_kd_log_path(), "a", encoding="utf-8", errors="replace")
     log.info(f"[cycle {cycle}] Starting kd.exe: kd -k {TRANSPORT}")
     # No -b (avoids early-boot KDNET timing freeze) and no -c (fires once only).
     # Commands are injected via stdin by the prompt monitor thread, which fires
@@ -119,8 +119,8 @@ def _start_kd(cycle):
 
 def _start_http():
     log.info(f"Starting HTTP MCP server on port {HTTP_PORT}")
-    out = open(str(LOG_DIR / "mcp-http.out.log"), "w")
-    err = open(str(LOG_DIR / "mcp-http.err.log"), "w")
+    out = open(str(LOG_DIR / "mcp-http.out.log"), "a")
+    err = open(str(LOG_DIR / "mcp-http.err.log"), "a")
     return subprocess.Popen(
         [PY, HTTP_SCRIPT, "--port", str(HTTP_PORT), "--host", "0.0.0.0"],
         cwd=str(pathlib.Path(HTTP_SCRIPT).parent),
