@@ -387,12 +387,15 @@ cmd_lab() {
     local arg default_gui=0
     [[ "$WINFORGE_BACKEND" == "vmware" ]] && default_gui=1
     LAB_SPAWN_GUI="${LAB_SPAWN_GUI:-$default_gui}"
+    local -a rest=()
     for arg in "$@"; do
         case "$arg" in
             --gui)   LAB_SPAWN_GUI=1 ;;
             --nogui) LAB_SPAWN_GUI=0 ;;
+            *)       rest+=("$arg") ;;
         esac
     done
+    if ((${#rest[@]})); then set -- "${rest[@]}"; else set --; fi
     case "$sub" in
         spawn)     _lab_spawn ;;
         start)     _lab_start ;;
