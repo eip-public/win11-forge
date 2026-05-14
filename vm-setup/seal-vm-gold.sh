@@ -19,6 +19,8 @@ IMAGES_DIR="$REPO_ROOT/vm-images"
 SETUP_VM="$SCRIPT_DIR/setup-vm.sh"
 # shellcheck source=lib/ssh-helpers.sh
 . "$SCRIPT_DIR/lib/ssh-helpers.sh"
+# shellcheck source=lib/virsh-helpers.sh
+. "$SCRIPT_DIR/lib/virsh-helpers.sh"
 
 VM_NAME=""
 VM_IP="192.168.122.100"
@@ -217,10 +219,10 @@ shutdown_vm() {
     log "Shutting down $VM_NAME"
     request_guest_shutdown
     sleep 5
-    virsh shutdown "$VM_NAME" >/dev/null 2>&1 || true
+    virsh_or_warn shutdown "$VM_NAME"
     if ! wait_for_vm_off; then
       log "Graceful shutdown timed out; forcing $VM_NAME off"
-      virsh destroy "$VM_NAME" >/dev/null 2>&1 || true
+      virsh_or_warn destroy "$VM_NAME"
       wait_for_vm_off || true
     fi
   fi

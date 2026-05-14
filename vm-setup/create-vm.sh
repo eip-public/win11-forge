@@ -26,6 +26,8 @@ IMAGES_DIR="$REPO_ROOT/vm-images"
 # (e.g. the debugger role uses a different MAC to get .101).
 # shellcheck source=lib/defaults.sh
 . "$SCRIPT_DIR/lib/defaults.sh"
+# shellcheck source=lib/virsh-helpers.sh
+. "$SCRIPT_DIR/lib/virsh-helpers.sh"
 
 # Standalone profile (differs from setup.sh's gold-build profile).
 VM_NAME="${VM_NAME:-winforge-dev}"
@@ -134,14 +136,14 @@ fi
 
 # ── Clean up old VM ────────────────────────────────────────────────
 
-if sudo virsh dominfo "$VM_NAME" >/dev/null 2>&1; then
+if virsh dominfo "$VM_NAME" >/dev/null 2>&1; then
   echo "[*] Removing existing VM '$VM_NAME'..."
-  sudo virsh destroy "$VM_NAME" 2>/dev/null || true
+  virsh_or_warn destroy "$VM_NAME"
   # Delete snapshots metadata first
-  for snap in $(sudo virsh snapshot-list "$VM_NAME" --name 2>/dev/null); do
-    sudo virsh snapshot-delete "$VM_NAME" "$snap" --metadata 2>/dev/null || true
+  for snap in $(virsh snapshot-list "$VM_NAME" --name 2>/dev/null); do
+    virsh_or_warn snapshot-delete "$VM_NAME" "$snap" --metadata
   done
-  sudo virsh undefine "$VM_NAME" --nvram 2>/dev/null || true
+  virsh_or_warn undefine "$VM_NAME" --nvram
 fi
 
 # ── Create disk ────────────────────────────────────────────────────
@@ -259,8 +261,12 @@ else
 
   echo "[*] Sending keypress for CD boot..."
   sleep 2
+  # Fire-and-forget keypress loop until the boot prompt clears. Many of these
+  # will fail in benign ways (VM not yet accepting input, boot already advanced
+  # past the prompt) — keep raw `|| true` rather than virsh_or_warn so the
+  # 30-iteration spam stays silent.
   for i in $(seq 1 30); do
-    sudo virsh send-key "$VM_NAME" KEY_ENTER 2>/dev/null || true
+    virsh send-key "$VM_NAME" KEY_ENTER 2>/dev/null || true
     sleep 0.5
   done
 

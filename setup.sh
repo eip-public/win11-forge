@@ -87,6 +87,8 @@ VIRTIO_ISO_NAME="virtio-win.iso"
 log()  { printf '\033[1;36m[%s]\033[0m %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 # shellcheck source=vm-setup/lib/log.sh
 . "$VM_SETUP/lib/log.sh"
+# shellcheck source=vm-setup/lib/virsh-helpers.sh
+. "$VM_SETUP/lib/virsh-helpers.sh"
 
 # ── preflight ──────────────────────────────────────────────────────
 
@@ -286,7 +288,7 @@ cmd_reset() {
 
     log "Shutting down $VM_NAME if running"
     if [[ "$(virsh domstate "$VM_NAME" 2>/dev/null)" == "running" ]]; then
-        virsh destroy "$VM_NAME" >/dev/null 2>&1 || true
+        virsh_or_warn destroy "$VM_NAME"
     fi
 
     log "Replacing working disk with fresh overlay off gold"
@@ -309,32 +311,32 @@ cmd_reset() {
 
 cmd_start() {
     virsh dominfo "$VM_NAME" >/dev/null 2>&1 || die "VM $VM_NAME not defined."
-    virsh start "$VM_NAME" 2>&1 || true
+    virsh_or_warn start "$VM_NAME"
     cmd_status
 }
 
 cmd_stop() {
     virsh dominfo "$VM_NAME" >/dev/null 2>&1 || die "VM $VM_NAME not defined."
     log "Graceful shutdown (60s grace)"
-    virsh shutdown "$VM_NAME" 2>&1 || true
+    virsh_or_warn shutdown "$VM_NAME"
     local i
     for i in $(seq 1 12); do
         [[ "$(virsh domstate "$VM_NAME" 2>/dev/null)" == "shut off" ]] && { ok "Stopped"; return; }
         sleep 5
     done
     warn "Grace period expired — forcing off"
-    virsh destroy "$VM_NAME" >/dev/null 2>&1 || true
+    virsh_or_warn destroy "$VM_NAME"
     ok "Stopped (forced)"
 }
 
 cmd_destroy() {
     log "Destroying $VM_NAME (keeping gold image, ISOs, SSH key)"
     if virsh dominfo "$VM_NAME" >/dev/null 2>&1; then
-        virsh destroy "$VM_NAME" >/dev/null 2>&1 || true
+        virsh_or_warn destroy "$VM_NAME"
         for snap in $(virsh snapshot-list "$VM_NAME" --name 2>/dev/null); do
-            virsh snapshot-delete "$VM_NAME" "$snap" --metadata 2>/dev/null || true
+            virsh_or_warn snapshot-delete "$VM_NAME" "$snap" --metadata
         done
-        virsh undefine "$VM_NAME" --nvram 2>/dev/null || true
+        virsh_or_warn undefine "$VM_NAME" --nvram
     fi
     rm -f "$IMAGES_DIR/${VM_NAME}.qcow2" "$IMAGES_DIR/${VM_NAME}.seal-verify.qcow2" "$IMAGES_DIR/unattend.iso"
     ok "Destroyed"
