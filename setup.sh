@@ -299,19 +299,7 @@ cmd_reset() {
     local tmp
     tmp="$(mktemp)"
     virsh dumpxml "$VM_NAME" > "$tmp"
-    python3 - "$tmp" "$working" <<'PY'
-import sys, xml.etree.ElementTree as ET
-path, disk = sys.argv[1], sys.argv[2]
-t = ET.parse(path); r = t.getroot()
-for d in r.findall("./devices/disk"):
-    if d.get("device") != "disk": continue
-    s = d.find("source")
-    if s is None: raise SystemExit("disk source missing")
-    s.set("file", disk); break
-else:
-    raise SystemExit("disk not found")
-t.write(path, encoding="unicode")
-PY
+    python3 "$VM_SETUP/lib/set-disk-source.py" "$tmp" "$working"
     virsh define "$tmp" >/dev/null
     rm -f "$tmp"
 

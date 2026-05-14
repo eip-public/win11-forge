@@ -192,27 +192,7 @@ set_vm_disk_source() {
   local xml_path
   xml_path="$(mktemp)"
   virsh dumpxml "$VM_NAME" >"$xml_path"
-  python3 - "$xml_path" "$disk_path" <<'PY'
-import sys
-import xml.etree.ElementTree as ET
-
-xml_path, disk_path = sys.argv[1], sys.argv[2]
-tree = ET.parse(xml_path)
-root = tree.getroot()
-
-for disk in root.findall("./devices/disk"):
-    if disk.get("device") != "disk":
-        continue
-    source = disk.find("source")
-    if source is None:
-        raise SystemExit("primary disk source not found")
-    source.set("file", disk_path)
-    break
-else:
-    raise SystemExit("primary disk not found")
-
-tree.write(xml_path, encoding="unicode")
-PY
+  python3 "$SCRIPT_DIR/lib/set-disk-source.py" "$xml_path" "$disk_path"
   virsh define "$xml_path" >/dev/null
   rm -f "$xml_path"
 }
