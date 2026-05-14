@@ -206,7 +206,7 @@ split by what each fix requires to validate:
   `seal-vm-gold.sh`, `install-winforge-bootstrap.ps1`, or the
   cleanup branches of `create-vm.sh`. Don't try to test these in
   isolation. **Batch them**, then ship the whole batch in a single
-  `./setup.sh install` rebuild. One multi-hour gold-rebuild cycle
+  `./setup.sh install` rebuild. The ~40 min gold-rebuild cycle
   validates the batch collectively.
 
 - **Host-install path** — fixes in `install-deps.sh`. Test on a clean
