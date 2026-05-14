@@ -31,19 +31,58 @@ USE_KEY=false
 POLL_INTERVAL_S="${POLL_INTERVAL_S:-10}"
 POLL_MAX_S="${POLL_MAX_S:-3600}"
 
+# Wait until sshd is *stable*, not merely reachable.
+#
+# Post-reboot, Windows OpenSSH goes through a flaky window where 'echo OK'
+# briefly succeeds, then fails again 10-20s later, then stabilises. If we
+# fire scp/ssh during the flaky window, the TCP connection ends up half-open
+# (lab side ESTABLISHED, guest side dropped without FIN/RST) and hangs
+# forever. Measured behaviour on a typical box (2026-05-14):
+#
+#   t+10s   first scp OK
+#   t+16s   first ssh OK
+#   t+24s   both fail
+#   t+25s   both OK again
+#   t+40s   stable
+#
+# wait_for_ssh demands STABLE_REQUIRED_S seconds of uninterrupted success
+# before returning. Bounded by MAX_WALL_S — a guest that can't stabilise in
+# that budget is genuinely broken and we fail loudly with the observed
+# history, not a silent hang.
+#
+# M=30s outlasts the largest measured flap (~14s) with 2x margin. Cap=300s
+# covers slow hosts (~2-3 min boot+settle worst case observed) with 2x
+# margin again.
 wait_for_ssh() {
   local label="${1:-SSH}"
-  echo -n "[*] Waiting for ${label}..."
-  for _ in $(seq 1 60); do
-    if ssh_cmd "echo OK" 2>/dev/null | grep -q OK; then
-      echo " connected!"
-      return 0
+  local stable_required_s="${WAIT_FOR_SSH_STABLE_S:-30}"
+  local max_wall_s="${WAIT_FOR_SSH_MAX_S:-300}"
+  local consecutive_ok=0 total=0 ok_count=0 fail_count=0 last_fail=""
+  echo "[*] Waiting for ${label} (need ${stable_required_s}s uninterrupted, max ${max_wall_s}s)"
+  while (( total < max_wall_s )); do
+    local out rc=0
+    out=$(ssh_cmd "echo OK" 2>&1) || rc=$?
+    if (( rc == 0 )) && [[ "$out" == *OK* ]]; then
+      ok_count=$((ok_count + 1))
+      consecutive_ok=$((consecutive_ok + 1))
+      if (( consecutive_ok >= stable_required_s )); then
+        echo "[+] ${label} stable: ${ok_count} OKs / ${fail_count} fails over ${total}s (${consecutive_ok}s uninterrupted)"
+        return 0
+      fi
+    else
+      fail_count=$((fail_count + 1))
+      last_fail="$out"
+      if (( consecutive_ok > 0 )); then
+        echo "  t+${total}s: ssh flapped (had ${consecutive_ok}s OK), resetting counter"
+      fi
+      consecutive_ok=0
     fi
-    echo -n "."
-    sleep 5
+    sleep 1
+    total=$((total + 1))
   done
-  echo ""
-  echo "[!] Timed out waiting for ${label}"
+  echo "[!] ${label} did not stabilise within ${max_wall_s}s" >&2
+  echo "    ${ok_count} OKs / ${fail_count} fails over ${total}s; last consecutive run was ${consecutive_ok}s" >&2
+  echo "    last failure output: ${last_fail:-(none)}" >&2
   return 1
 }
 
