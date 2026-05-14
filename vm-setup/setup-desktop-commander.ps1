@@ -1,3 +1,6 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
 # Pre-seed DesktopCommanderMCP defaultShell before first startup.
 # DesktopCommander generates its full config on first run — we only set defaultShell
 # here so it uses powershell.exe from the start. All other settings (blockedCommands,
