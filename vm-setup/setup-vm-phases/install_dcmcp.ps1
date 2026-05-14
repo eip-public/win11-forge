@@ -25,7 +25,7 @@ if (Test-Path C:\winforge\package-lock.json) {
 
 npm install @wonderwhy-er/desktop-commander --no-fund --no-audit
 if ($LASTEXITCODE -ne 0) {
-    throw "npm install failed (exit $LASTEXITCODE) — see C:\Users\forge\AppData\Local\npm-cache\_logs\ for the full debug log"
+    throw "npm install failed (exit $LASTEXITCODE) -- see C:\Users\forge\AppData\Local\npm-cache\_logs\ for the full debug log"
 }
 
 if (-not (Test-Path $entry)) {
