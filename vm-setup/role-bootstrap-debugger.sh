@@ -92,8 +92,8 @@ verify_schtask_running() {
     return 1
 }
 
-ok()   { printf '\033[1;32m[+]\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m[!]\033[0m %s\n' "$*" >&2; }
+# shellcheck source=lib/log.sh
+. "$SCRIPT_DIR/lib/log.sh"
 
 # With DHCP gold + MAC-based libvirt reservation, debugger arrives at $VM_IP
 # directly — no IP reassignment needed.

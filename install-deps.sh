@@ -49,10 +49,9 @@ PIPX_PKGS=(
 BINEXPORT_URL="${BINEXPORT_URL:-https://github.com/google/binexport/releases/download/v12-20240417-ghidra_11.0.3/BinExport_Ghidra-Java.zip}"
 BINEXPORT_CACHE="${BINEXPORT_CACHE:-/opt/ghidra-extensions/BinExport_Ghidra-Java.zip}"
 
-ok()   { printf '\033[1;32m[+]\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m[!]\033[0m %s\n' "$*" >&2; }
-die()  { printf '\033[1;31m[-]\033[0m %s\n' "$*" >&2; exit 1; }
 log()  { printf '\033[1;36m[*]\033[0m %s\n' "$*"; }
+# shellcheck source=vm-setup/lib/log.sh
+. "$(dirname "${BASH_SOURCE[0]}")/vm-setup/lib/log.sh"
 
 need_sudo() {
     if [[ $EUID -ne 0 ]]; then
