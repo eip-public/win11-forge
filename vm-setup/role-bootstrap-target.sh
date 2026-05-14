@@ -137,21 +137,10 @@ if [[ "$status" != "200" ]]; then
 else
     echo "[+] MCP up — configuring via API"
 
-    # Get session ID
-    SESSION=$(curl -si -X POST "http://$VM_IP:8200/mcp" \
-        -H "Content-Type: application/json" \
-        -H "Accept: application/json, text/event-stream" \
-        -d '{"jsonrpc":"2.0","method":"initialize","id":1,"params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"setup","version":"1"}}}' \
-        2>/dev/null | grep mcp-session-id | awk '{print $2}' | tr -d '\r')
-
-    dc_set() {
-        curl -s -X POST "http://$VM_IP:8200/mcp" \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/json, text/event-stream" \
-            -H "mcp-session-id: $SESSION" \
-            -d "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"id\":2,\"params\":{\"name\":\"set_config_value\",\"arguments\":{\"key\":\"$1\",\"value\":$2}}}" \
-            >/dev/null 2>&1
-    }
+    # shellcheck source=lib/dc-helpers.sh
+    . "$SCRIPT_DIR/lib/dc-helpers.sh"
+    DC_URL="http://$VM_IP:8200/mcp"
+    dc_init
 
     # Clear default blocked commands (includes bcdedit, reg, shutdown, reboot — all needed)
     dc_set "blockedCommands"    "[]"
