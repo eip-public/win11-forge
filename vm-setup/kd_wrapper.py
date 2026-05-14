@@ -26,7 +26,15 @@ Runs as SYSTEM via the DebuggerBoot scheduled task registered by
 role-bootstrap-debugger.sh.
 """
 
-import subprocess, os, sys, time, logging, pathlib, threading, signal
+import logging
+import os
+import pathlib
+import signal
+import subprocess
+import sys
+import threading
+import time
+import types
 
 # config
 
@@ -69,7 +77,7 @@ _http_proc: subprocess.Popen | None = None
 _kd_log_fh = None
 _shutdown   = threading.Event()
 
-def _handle_signal(sig, _):
+def _handle_signal(sig: int, _: types.FrameType | None) -> None:
     log.info(f"Signal {sig} received - shutting down")
     _shutdown.set()
 
@@ -78,7 +86,7 @@ signal.signal(signal.SIGINT,  _handle_signal)
 
 # helpers
 
-def _stop(proc, name):
+def _stop(proc: subprocess.Popen | None, name: str) -> None:
     if proc is None or proc.poll() is not None:
         return
     log.info(f"Stopping {name} (pid={proc.pid})")
@@ -90,15 +98,15 @@ def _stop(proc, name):
         except Exception: pass
 
 
-def _pipe_exists():
+def _pipe_exists() -> bool:
     return os.path.exists(PIPE_PATH)
 
 
-def _kd_log_path():
+def _kd_log_path() -> str:
     return str(LOG_DIR / "kd.out.log")
 
 
-def _start_kd(cycle):
+def _start_kd(cycle: int) -> subprocess.Popen:
     global _kd_log_fh
     if _kd_log_fh:
         try: _kd_log_fh.close()
@@ -117,7 +125,7 @@ def _start_kd(cycle):
     )
 
 
-def _start_http():
+def _start_http() -> subprocess.Popen | None:
     log.info(f"Starting HTTP MCP server on port {HTTP_PORT}")
     out = err = None
     try:
@@ -142,7 +150,7 @@ def _start_http():
                 except Exception: pass
 
 
-def _wait_for_kd_connect(proc, cycle):
+def _wait_for_kd_connect(proc: subprocess.Popen, cycle: int) -> bool:
     deadline = time.monotonic() + CONNECT_TIMEOUT_S
     last_size = 0
     log.info(f"[cycle {cycle}] Waiting for KDNET connection (up to {CONNECT_TIMEOUT_S}s)...")
@@ -177,7 +185,7 @@ def _wait_for_kd_connect(proc, cycle):
     return False
 
 
-def _prompt_monitor(proc, cycle, pipe_ready_event):
+def _prompt_monitor(proc: subprocess.Popen, cycle: int, pipe_ready_event: threading.Event) -> None:
     """Background thread: watches kd.out.log for 'kd>' and injects extension commands.
 
     Fires on EVERY break (BugCheck, NMI, etc.) until the pipe is created.
@@ -197,7 +205,7 @@ def _prompt_monitor(proc, cycle, pipe_ready_event):
     carryover = ""  # 2-char tail bridges a "kd>" split across read boundaries
     injected = False
 
-    def send(cmd, delay=1.5):
+    def send(cmd: str, delay: float = 1.5) -> None:
         try:
             proc.stdin.write((cmd + "\n").encode())
             proc.stdin.flush()
@@ -292,7 +300,7 @@ def _prompt_monitor(proc, cycle, pipe_ready_event):
 
 # supervisor loop
 
-def run():
+def run() -> None:
     global _kd_proc, _http_proc
     cycle = 0
 

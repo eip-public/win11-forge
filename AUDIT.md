@@ -601,7 +601,7 @@ Legend:
 - Mixed shebangs — **open / Phase C** (fold in with the `-Eeuo` sweep — every script gets touched once)
 - Two vm-setup/*.ps1 files miss strict mode — **open / Phase C** (`setup-desktop-commander.ps1` runs during gold-build inside the guest)
 - Three different Python logging strategies across 3 scripts — **open / Phase C** (the in-guest scripts run only in the running lab; cleanest to validate via fresh spawn off a rebuilt gold)
-- Python: missing type hints, multi-import line — **open / Phase B** (kd_wrapper.py style; behavior-preserving)
+- Python: missing type hints, multi-import line — **fixed** (commit pending; kd_wrapper.py imports split PEP 8 style, type hints on all 10 functions)
 - vm-setup/target_mcp_http.py dead `HERE` — **fixed** in 498b948
 - setup.sh help command parsing brittle — **fixed** in 4c5f53f
 - _lab_status / _lab_spawn divergent endpoint tables — **fixed** in de61d52
