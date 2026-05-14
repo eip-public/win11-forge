@@ -338,18 +338,7 @@ $node = Get-Command node -EA SilentlyContinue
 if ($node) { Write-Host "[+] node: $((node --version 2>&1))" } else { Write-Host "[-] node not found" }
 ' "install_nodejs.ps1"
 
-run_phase "desktop_commander" "Installing DesktopCommanderMCP" 'if (Test-Path '\''C:\winforge\node_modules\@wonderwhy-er\desktop-commander\dist\index.js'\'') { Write-Output OK }' '
-$env:Path = "C:\Program Files\nodejs;C:\ProgramData\npm;$env:Path"
-Set-Location C:\winforge
-if (-not (Test-Path "C:\winforge\node_modules\@wonderwhy-er\desktop-commander")) {
-    npm install @wonderwhy-er/desktop-commander --no-fund --no-audit 2>&1 | Select-Object -Last 5
-} else {
-    Write-Host "[+] DesktopCommanderMCP already installed"
-}
-$entry = "C:\winforge\node_modules\@wonderwhy-er\desktop-commander\dist\index.js"
-if (Test-Path $entry) { Write-Host "[+] DesktopCommanderMCP: $entry" }
-else { Write-Host "[-] DesktopCommanderMCP entry point not found" }
-' "install_dcmcp.ps1"
+run_phase "desktop_commander" "Installing DesktopCommanderMCP" 'if (Test-Path '\''C:\winforge\node_modules\@wonderwhy-er\desktop-commander\dist\index.js'\'') { Write-Output OK }' "$(<"$SCRIPT_DIR/setup-vm-phases/install_dcmcp.ps1")" "install_dcmcp.ps1"
 
 echo "[*] Deploying target_mcp_http.py..."
 if [[ -f "$SCRIPT_DIR/target_mcp_http.py" ]]; then
