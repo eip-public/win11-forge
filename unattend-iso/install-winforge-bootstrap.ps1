@@ -25,7 +25,7 @@ if (-not (Test-Path (Join-Path $OpenSshInstallRoot "sshd.exe"))) {
     # `&` invocation does NOT trigger $ErrorActionPreference=Stop on a non-zero
     # exit code, so check $LASTEXITCODE explicitly. Without this, an install-sshd
     # failure (perms, port collision, etc.) silently flows through to
-    # Register-ScheduledTask and the gold image seals with broken SSH — surface
+    # Register-ScheduledTask and the gold image seals with broken SSH -- surface
     # is delayed until seal-vm-gold.sh's wait_for_ssh times out much later.
     $sshLog = Join-Path $Root "install-sshd.log"
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $OpenSshInstallScript *>&1 |

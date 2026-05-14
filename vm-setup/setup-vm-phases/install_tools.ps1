@@ -5,7 +5,7 @@ if (-not (Test-Path $choco)) {
 
 # choco install python3 fails with "Unable to resolve dependency vcredist2015"
 # under chocolatey 2.7.2 even though vcredist2015 exists on the community repo
-# — looks like a regression in 2.7.2's transitive dep resolver. Installing
+# -- looks like a regression in 2.7.2's transitive dep resolver. Installing
 # vcredist2015 explicitly first satisfies the dep from local cache so python3
 # proceeds.
 #

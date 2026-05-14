@@ -4,7 +4,7 @@ Set-MpPreference -DisableRealtimeMonitoring 1 -ErrorAction SilentlyContinue
 Set-MpPreference -DisableBehaviorMonitoring 1 -ErrorAction SilentlyContinue
 # Freeze the OS build. Without ALL of these, a background Windows Update will
 # bump the target past its CVE-vulnerable baseline mid-run and destroy the
-# research target — WaaSMedicSvc specifically re-enables wuauserv if only
+# research target -- WaaSMedicSvc specifically re-enables wuauserv if only
 # that one is disabled.
 foreach ($svc in "wuauserv","UsoSvc","BITS") {
     Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue

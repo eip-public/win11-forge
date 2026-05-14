@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $Root = "C:\winforge"
 $ReadyPath = Join-Path $Root "ready.json"
 $LogPath = Join-Path $Root "bootstrap.log"
-# (formerly $StaticIp/$Gateway/$Dns — removed; gold image uses DHCP, IPs are
+# (formerly $StaticIp/$Gateway/$Dns -- removed; gold image uses DHCP, IPs are
 #  pinned per-MAC by libvirt dnsmasq on the host)
 
 New-Item -ItemType Directory -Path $Root -Force | Out-Null
