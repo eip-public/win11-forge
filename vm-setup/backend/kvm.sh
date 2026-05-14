@@ -34,12 +34,15 @@
 
 # ── Backend constants ─────────────────────────────────────────────
 
+# shellcheck source=../lib/macs.env
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/macs.env"
+
 TARGET_NAME="winforge-target"
 DEBUGGER_NAME="winforge-debugger"
 TARGET_IP="192.168.122.100"
 DEBUGGER_IP="192.168.122.101"
-TARGET_MAC="52:54:00:11:11:11"      # QEMU OUI; libvirt-friendly
-DEBUGGER_MAC="52:54:00:22:22:22"
+TARGET_MAC="$KVM_TARGET_MAC"        # QEMU OUI 52:54:00; libvirt-friendly
+DEBUGGER_MAC="$KVM_DEBUGGER_MAC"
 
 backend_name() { echo "kvm"; }
 
