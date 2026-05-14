@@ -24,17 +24,19 @@ VM_IP="${1:?usage: $0 <vm-ip> <ssh-key>}"
 SSH_KEY="${2:?usage: $0 <vm-ip> <ssh-key>}"
 VM_USER="${VM_USER:-forge}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/ssh-helpers.sh
+. "$SCRIPT_DIR/lib/ssh-helpers.sh"
 
 ssh_cmd() {
-    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
-        -o LogLevel=ERROR "$VM_USER@$VM_IP" "$@"
+    ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" \
+        -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
+        "$VM_USER@$VM_IP" "$@"
 }
 
 scp_to() {
-    scp -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    scp -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" \
         -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
-        -o LogLevel=ERROR "$1" "$VM_USER@$VM_IP:$2"
+        "$1" "$VM_USER@$VM_IP:$2"
 }
 
 wait_for_ssh() {

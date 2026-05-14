@@ -15,6 +15,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=lib/ssh-helpers.sh
+. "$SCRIPT_DIR/lib/ssh-helpers.sh"
 
 # Defaults
 VM_IP="192.168.122.100"
@@ -54,22 +56,18 @@ done
 ssh_cmd() {
   local cmd="$1"
   if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
-    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-      -o LogLevel=ERROR -o ConnectTimeout=10 "${VM_USER}@${VM_IP}" "$cmd" 2>&1
+    ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$cmd" 2>&1
   else
-    sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-      -o LogLevel=ERROR -o ConnectTimeout=10 "${VM_USER}@${VM_IP}" "$cmd" 2>&1
+    sshpass -p "$VM_PASS" ssh "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$cmd" 2>&1
   fi
 }
 
 scp_to() {
   local src="$1" dst="$2"
   if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
-    scp -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-      -o LogLevel=ERROR "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
+    scp -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
   else
-    sshpass -p "$VM_PASS" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-      -o LogLevel=ERROR "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
+    sshpass -p "$VM_PASS" scp "${SSH_OPTS_COMMON[@]}" "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
   fi
 }
 

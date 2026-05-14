@@ -17,6 +17,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 IMAGES_DIR="$REPO_ROOT/vm-images"
 SETUP_VM="$SCRIPT_DIR/setup-vm.sh"
+# shellcheck source=lib/ssh-helpers.sh
+. "$SCRIPT_DIR/lib/ssh-helpers.sh"
 
 VM_NAME=""
 VM_IP="192.168.122.100"
@@ -99,14 +101,13 @@ ssh_base() {
   # ServerAliveInterval prevents the session hanging indefinitely if the remote
   # stops responding (e.g. during Windows shutdown triggered by request_guest_shutdown).
   if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
-    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-      -o LogLevel=ERROR -o ConnectTimeout=10 -o BatchMode=yes \
+    ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" \
+      -o BatchMode=yes \
       -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
       -o PreferredAuthentications=publickey -o PasswordAuthentication=no \
       -o KbdInteractiveAuthentication=no "$VM_USER@$VM_IP" "$@"
   else
-    sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-      -o LogLevel=ERROR -o ConnectTimeout=10 \
+    sshpass -p "$VM_PASS" ssh "${SSH_OPTS_COMMON[@]}" \
       -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
       "$VM_USER@$VM_IP" "$@"
   fi
@@ -114,13 +115,12 @@ ssh_base() {
 
 scp_base() {
   if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
-    scp -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-      -o LogLevel=ERROR -o BatchMode=yes \
+    scp -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" \
+      -o BatchMode=yes \
       -o PreferredAuthentications=publickey -o PasswordAuthentication=no \
       -o KbdInteractiveAuthentication=no "$@"
   else
-    sshpass -p "$VM_PASS" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-      -o LogLevel=ERROR "$@"
+    sshpass -p "$VM_PASS" scp "${SSH_OPTS_COMMON[@]}" "$@"
   fi
 }
 
@@ -140,8 +140,7 @@ trap on_error ERR
 
 can_use_key() {
   [[ -f "$SSH_KEY" ]] || return 1
-  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    -o LogLevel=ERROR -o ConnectTimeout=10 -o BatchMode=yes \
+  ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" -o BatchMode=yes \
     -o PreferredAuthentications=publickey -o PasswordAuthentication=no \
     -o KbdInteractiveAuthentication=no "$VM_USER@$VM_IP" "echo OK" 2>/dev/null | tr -d '\r' | grep -q '^OK$'
 }

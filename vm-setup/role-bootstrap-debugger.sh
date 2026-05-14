@@ -23,24 +23,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ServerAliveInterval prevents the SSH session hanging if the remote
 # stops responding (e.g. during WinDbg operations or Windows reboots).
+# shellcheck source=lib/ssh-helpers.sh
+. "$SCRIPT_DIR/lib/ssh-helpers.sh"
+
 ssh_cmd() {
-    ssh -i "$SSH_KEY" \
-        -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        -o ConnectTimeout=10 \
-        -o ServerAliveInterval=10 \
-        -o ServerAliveCountMax=6 \
-        -o LogLevel=ERROR \
+    ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" \
+        -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
         "$VM_USER@$VM_IP" "$@"
 }
 
 scp_to() {
-    scp -i "$SSH_KEY" \
-        -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        -o ServerAliveInterval=10 \
-        -o ServerAliveCountMax=6 \
-        -o LogLevel=ERROR \
+    scp -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" \
+        -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
         "$1" "$VM_USER@$VM_IP:$2"
 }
 
