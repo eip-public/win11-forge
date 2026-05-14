@@ -169,7 +169,23 @@ preflight_clean_mac_collisions() {
         fi
     done
     if [[ ${#running[@]} -gt 0 ]]; then
-        die "Running domain(s) hold $VM_MAC: ${running[*]}. Stop them first (./setup.sh lab destroy, or virsh destroy <name>)."
+        # Suggest the right cleanup command per domain. winforge-target /
+        # winforge-debugger live under cmd_lab (./setup.sh lab destroy); a
+        # leftover single-VM domain like winforge-win11-24h2 is owned by
+        # cmd_destroy (./setup.sh destroy).
+        local d hint=""
+        for d in "${running[@]}"; do
+            case "$d" in
+                winforge-target|winforge-debugger)
+                    hint+="./setup.sh lab destroy   # for $d"$'\n'
+                    ;;
+                *)
+                    hint+="./setup.sh destroy       # for $d (single-VM domain — undefines + removes working disk)"$'\n'
+                    hint+="virsh destroy $d   # OR: just force-stop, keep the definition"$'\n'
+                    ;;
+            esac
+        done
+        die "Running domain(s) hold $VM_MAC: ${running[*]}. Stop them first:"$'\n'"$hint"
     fi
     if [[ ${#foreign[@]} -gt 0 ]]; then
         die "Non-winforge domain(s) hold $VM_MAC: ${foreign[*]}. Refusing to auto-clean — free the MAC before installing."
