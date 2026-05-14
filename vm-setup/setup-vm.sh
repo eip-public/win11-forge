@@ -53,31 +53,26 @@ while [[ $# -gt 0 ]]; do
 done
 
 # SSH helper -- uses key if available, password otherwise.
-# ServerAliveInterval/CountMax detect half-dead sessions where the remote
-# powershell has exited but sshd hasn't reported it (the script hangs at
-# the python_git phase every install without this -- the install completes
-# on the guest, sshd never sends the exit status, ssh waits forever).
-#
-# CountMax=60 with Interval=15 = ~15 min tolerance. The longest legitimate
-# silent stretches are VS Build Tools (~10 min) and the Windows SDK install
-# (~5 min); at 60 second tolerance (Phase C default), choco's slower phases
-# got killed before they had a chance to complete.
-SSH_KEEPALIVE_OPTS=(-o ServerAliveInterval=15 -o ServerAliveCountMax=60)
+# No ServerAliveInterval/CountMax: Windows OpenSSH's worker can stall on
+# child stdout I/O during heavy installs (msiexec MSI extraction etc.),
+# making keepalives time out *during* legitimate work. Letting ssh wait
+# as long as needed is the lesser evil; if a session is truly dead, TCP
+# timeout (~1 hour) eventually breaks it and the user can Ctrl-C sooner.
 ssh_cmd() {
   local cmd="$1"
   if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
-    ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${SSH_KEEPALIVE_OPTS[@]}" "${VM_USER}@${VM_IP}" "$cmd" 2>&1
+    ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$cmd" 2>&1
   else
-    sshpass -p "$VM_PASS" ssh "${SSH_OPTS_COMMON[@]}" "${SSH_KEEPALIVE_OPTS[@]}" "${VM_USER}@${VM_IP}" "$cmd" 2>&1
+    sshpass -p "$VM_PASS" ssh "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$cmd" 2>&1
   fi
 }
 
 scp_to() {
   local src="$1" dst="$2"
   if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
-    scp -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${SSH_KEEPALIVE_OPTS[@]}" "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
+    scp -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
   else
-    sshpass -p "$VM_PASS" scp "${SSH_OPTS_COMMON[@]}" "${SSH_KEEPALIVE_OPTS[@]}" "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
+    sshpass -p "$VM_PASS" scp "${SSH_OPTS_COMMON[@]}" "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
   fi
 }
 
