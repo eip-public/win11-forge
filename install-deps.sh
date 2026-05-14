@@ -21,6 +21,7 @@ VIRTIO_ISO_URL="${VIRTIO_ISO_URL:-https://fedorapeople.org/groups/virt/virtio-wi
 WINFORGE_SKIP_ISO_DOWNLOAD="${WINFORGE_SKIP_ISO_DOWNLOAD:-0}"
 
 APT_PKGS=(
+    acl
     curl
     libvirt-daemon-system
     libvirt-clients
@@ -230,6 +231,17 @@ check_mode() {
         fail=1
     fi
 
+    local target_home
+    target_home="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+    printf '  %-40s ' "libvirt-qemu ACL on $target_home:"
+    if [[ -n "$target_home" && -d "$target_home" ]] && \
+       getfacl --absolute-names "$target_home" 2>/dev/null | grep -qE '^user:libvirt-qemu:.*x'; then
+        ok "traverse granted"
+    else
+        warn "missing (VM image access will fail)"
+        fail=1
+    fi
+
     return $fail
 }
 
@@ -252,6 +264,21 @@ install_mode() {
             groups_added+=("$group")
         fi
     done
+
+    # Ubuntu 24.04 ships /home/<user> as drwxr-x---, which blocks libvirt-qemu
+    # (uid 64055) from traversing into the user's $HOME to reach VM images
+    # under ~/win11-forge/vm-images. virt-install warns about this but
+    # proceeds, then dies with "Cannot access storage file ... Permission
+    # denied" once qemu tries to open the qcow2. Grant traverse-only via
+    # ACL so other-user permissions stay locked down.
+    local target_home
+    target_home="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+    if [[ -n "$target_home" && -d "$target_home" ]] && id libvirt-qemu >/dev/null 2>&1; then
+        if ! getfacl --absolute-names "$target_home" 2>/dev/null | grep -qE '^user:libvirt-qemu:.*x'; then
+            log "Granting libvirt-qemu traverse ACL on $target_home"
+            ${SUDO[@]} setfacl -m u:libvirt-qemu:x "$target_home"
+        fi
+    fi
 
     if [[ ${#PIPX_PKGS[@]} -gt 0 ]]; then
         log "Installing pipx packages system-wide into /opt/pipx: ${PIPX_PKGS[*]}"
