@@ -25,6 +25,12 @@ VM_PASS="forge123"
 SSH_KEY="${REPO_ROOT}/vm-ssh-key"
 USE_KEY=false
 
+# upload_and_run_ps1 detached-task settings. POLL_INTERVAL_S is how often
+# we check the marker file on the guest; POLL_MAX_S is the cap per phase.
+# Each poll is a short (<5s) ssh call, so Windows OpenSSH cannot wedge.
+POLL_INTERVAL_S="${POLL_INTERVAL_S:-10}"
+POLL_MAX_S="${POLL_MAX_S:-3600}"
+
 wait_for_ssh() {
   local label="${1:-SSH}"
   echo -n "[*] Waiting for ${label}..."
@@ -76,15 +82,93 @@ scp_to() {
   fi
 }
 
+# Stage runner.ps1 + launch.ps1 on the guest exactly once per setup-vm.sh run.
+# These are the static helpers the detached-task design depends on:
+#   launch.ps1 -- registers + starts a one-shot scheduled task that runs runner.ps1
+#   runner.ps1 -- runs the user script with all output redirected to a log file
+#                 and writes the exit code to a marker file when done
+_stage_run_helpers() {
+  if [[ "${RUN_HELPERS_STAGED:-}" == "true" ]]; then return 0; fi
+  scp_to "$SCRIPT_DIR/setup-vm-phases/runner.ps1" "C:/winforge/runner.ps1" >&2
+  scp_to "$SCRIPT_DIR/setup-vm-phases/launch.ps1" "C:/winforge/launch.ps1" >&2
+  RUN_HELPERS_STAGED=true
+}
+
+# Run a PowerShell script on the guest DETACHED from the ssh session.
+#
+# The script runs as a Windows scheduled task; all output is redirected to
+# a log file on the guest; the bash side polls a marker file via short ssh
+# calls and prints the log to OUR stdout when done. Each ssh call is short
+# (<5s), so Windows OpenSSH's worker cannot wedge on long-running output
+# (the failure mode that hung previous install runs at the python_git phase).
+#
+# Same signature as the previous synchronous version, so callers like
+#   CHOCOLATEY_BOOTSTRAP_OUTPUT=$(upload_and_run_ps1 "$content" "name.ps1")
+# still capture the script's stdout via this function's stdout.
 upload_and_run_ps1() {
   local script_content="$1"
   local script_name="${2:-_setup_step.ps1}"
+  local base="${script_name%.ps1}"
+  local guest_script="C:/winforge/${script_name}"
+  local log="C:/winforge/state/runs/${base}.log"
+  local marker="C:/winforge/state/runs/${base}.done"
+  local task_name="winforge-${base}"
+
+  _stage_run_helpers
+
+  # Upload the user script. scp_to merges stderr->stdout internally; redirect
+  # to stderr so the scp progress line doesn't contaminate our stdout (which
+  # callers capture via $(...) for grep'ing).
   local tmp_script
   tmp_script="$(mktemp "/tmp/${script_name}.XXXXXX")"
   printf '%s\n' "$script_content" >"$tmp_script"
-  scp_to "$tmp_script" "C:/winforge/$script_name"
+  scp_to "$tmp_script" "$guest_script" >&2
   rm -f "$tmp_script"
-  ssh_cmd "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\winforge\\$script_name"
+
+  # Register + start the detached task. Returns in ~1s; sshd cannot wedge.
+  ssh_cmd "powershell -NoProfile -ExecutionPolicy Bypass -File C:/winforge/launch.ps1 -Script $guest_script -Log $log -Marker $marker -TaskName $task_name" >&2
+
+  # Poll the marker. Each ssh call is short. We call ssh directly (not via
+  # ssh_cmd, which merges stderr->stdout) so any ssh error goes to bash's
+  # stderr — VISIBLE to the user, not hidden. Transient ssh failures yield
+  # an empty $rc and the loop sleeps + retries; the failure text still
+  # showed on stderr so the user knows.
+  local elapsed=0 rc=""
+  while (( elapsed < POLL_MAX_S )); do
+    if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
+      rc=$(ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" \
+        "powershell -NoProfile -Command \"if (Test-Path '$marker') { (Get-Content '$marker' -Raw).Trim() }\"" \
+        | tr -d '\r\n ')
+    else
+      rc=$(sshpass -p "$VM_PASS" ssh "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" \
+        "powershell -NoProfile -Command \"if (Test-Path '$marker') { (Get-Content '$marker' -Raw).Trim() }\"" \
+        | tr -d '\r\n ')
+    fi
+    [[ -n "$rc" ]] && break
+    sleep "$POLL_INTERVAL_S"
+    elapsed=$((elapsed + POLL_INTERVAL_S))
+  done
+
+  if [[ -z "$rc" ]]; then
+    echo "[!] upload_and_run_ps1: timeout (${POLL_MAX_S}s) waiting for $marker on $VM_IP" >&2
+    return 124
+  fi
+  if ! [[ "$rc" =~ ^[0-9]+$ ]]; then
+    echo "[!] upload_and_run_ps1: non-numeric marker content '$rc' on $VM_IP" >&2
+    return 125
+  fi
+
+  # Stream the script's log to OUR stdout so callers can capture it.
+  ssh_cmd "powershell -NoProfile -Command \"if (Test-Path '$log') { Get-Content '$log' }\""
+
+  # No bash-side task cleanup. launch.ps1 calls Unregister-ScheduledTask at
+  # the top of every invocation, so the same task name gets cleaned on next
+  # use. Leftover task definitions accumulate one-deep per unique phase name
+  # (~10 for setup-vm.sh); cosmetic, not functional. Avoids the bash -> ssh
+  # -> powershell quoting hell that would otherwise be needed to escape
+  # -Confirm:\$false correctly.
+
+  return "$rc"
 }
 
 phase_satisfied() {
