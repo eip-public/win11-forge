@@ -578,7 +578,7 @@ Legend:
 - install-winforge-bootstrap.ps1 swallows OpenSSH installer failure — **open / Phase C**
 - kd_wrapper.py opens log files without a context manager — **partial**:
     - `_prompt_monitor` log_fh — **fixed** in 6f24798 (try/finally)
-    - `_start_http` out/err handles — **open / Phase A**
+    - `_start_http` out/err handles — **fixed** (commit pending)
 - setup-vm.sh mcp-windbg install isn't gated on success — **open / Phase C**
 - seal-vm-gold.sh wait_for_ssh silently no-ops with bad config — **open / Phase C**
 - install-deps.sh install_binexport_plugin skips silently — **open / Phase D**
