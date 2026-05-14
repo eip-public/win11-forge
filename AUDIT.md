@@ -592,7 +592,7 @@ Legend:
 - Duplicate ssh-helper functions across 4 scripts — **open / Phase B** (extract `vm-setup/lib/ssh-helpers.sh`)
 - Three different logging styles across bash scripts — **open / Phase B** (extract `vm-setup/lib/log.sh`)
 - Two sets of constants for gold image name and IP defaults + dead `CURRENT_GOLD_IP` — **open / Phase B**
-- Stale name PHASE0_DIR — **fixed** (commit pending)
+- Stale name PHASE0_DIR — **fixed** in e6e7208
 - dc_set JSON-quoting helper duplicated — **open / Phase B**
 
 ### Style & convention drift (3 / 9 closed)
