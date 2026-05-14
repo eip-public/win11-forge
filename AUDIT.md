@@ -589,7 +589,7 @@ Legend:
 - Three sources of truth for VM MAC addresses — **fixed** in 301a3ba (vm-setup/lib/macs.env sourced by defaults.sh, backend/kvm.sh, backend/vmware.sh, install-deps.sh)
 - setup-vm.sh long inline PowerShell heredocs — **open / Phase C** (per-phase `.ps1` files; needs gold rebuild to validate)
 - setup-vm.sh runs `iex` for chocolatey — **won't fix** (audit marked "note only"; documented chocolatey flow)
-- Duplicate ssh-helper functions across 4 scripts — **open / Phase B** (extract `vm-setup/lib/ssh-helpers.sh`)
+- Duplicate ssh-helper functions across 4 scripts — **fixed** (commit pending; shallow extract — only the truly-shared SSH options block into vm-setup/lib/ssh-helpers.sh's SSH_OPTS_COMMON array; per-script auth/timeout/output behavior preserved)
 - Three different logging styles across bash scripts — **open / Phase B** (extract `vm-setup/lib/log.sh`)
 - Two sets of constants for gold image name and IP defaults + dead `CURRENT_GOLD_IP` — **fixed** in 21e7900 (extracted to vm-setup/lib/defaults.sh, GOLD_MAC→VM_MAC, GOLD_IP→VM_IP, CURRENT_GOLD_IP deleted, env-vs-flag dup at cmd_install dropped)
 - Stale name PHASE0_DIR — **fixed** in e6e7208
