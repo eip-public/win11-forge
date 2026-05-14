@@ -35,7 +35,8 @@ def main() -> int:
         format="%(asctime)s [target-mcp] %(levelname)s %(message)s",
         handlers=[
             logging.FileHandler(str(LOG_DIR / "target-mcp.log"), encoding="utf-8"),
-            logging.StreamHandler(sys.stdout),
+            # Stderr (not stdout): MCP servers reserve stdout for protocol data.
+            logging.StreamHandler(sys.stderr),
         ],
     )
     log = logging.getLogger("target-mcp")

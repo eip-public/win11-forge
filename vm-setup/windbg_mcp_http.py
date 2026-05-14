@@ -36,7 +36,18 @@ def main() -> int:
     args = parser.parse_args()
 
     load_environment_config()
-    logging.basicConfig(level=getattr(logging, LOG_LEVEL), format=LOG_FORMAT)
+    # Match the kd_wrapper / target_mcp_http pattern: file + stderr (not stdout —
+    # MCP servers reserve stdout for protocol data).
+    log_dir = Path(r"C:\winforge\logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        level=getattr(logging, LOG_LEVEL),
+        format=LOG_FORMAT,
+        handlers=[
+            logging.FileHandler(str(log_dir / "windbg-mcp-http.log"), encoding="utf-8"),
+            logging.StreamHandler(sys.stderr),
+        ],
+    )
     log = logging.getLogger("windbg-mcp-http")
 
     log.info("Initializing WinDbg MCP server (HTTP transport)")

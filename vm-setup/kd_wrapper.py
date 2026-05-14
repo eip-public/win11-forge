@@ -65,7 +65,9 @@ logging.basicConfig(
     format="%(asctime)s [wrapper] %(levelname)s %(message)s",
     handlers=[
         logging.FileHandler(str(LOG_DIR / "kd_wrapper.log"), encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
+        # Stderr (not stdout): MCP-adjacent processes use stdout for protocol data;
+        # logs go to stderr so they don't corrupt any stdio channel.
+        logging.StreamHandler(sys.stderr),
     ],
 )
 log = logging.getLogger("kd_wrapper")

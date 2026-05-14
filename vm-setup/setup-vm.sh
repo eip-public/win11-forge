@@ -398,8 +398,12 @@ if (-not $cli) {
 if (-not $cli) { throw "mcp-windbg CLI missing after install" }
 Write-Host ("[+] mcp-windbg installed at " + $cli.Source)
 ' "install_mcp_windbg.ps1"
-  phase_satisfied "mcp_windbg" '$cli = Get-Command mcp-windbg -EA SilentlyContinue; if (-not $cli -and (Test-Path '\''C:\Python314\Scripts\mcp-windbg.exe'\'')) { $cli = Get-Item '\''C:\Python314\Scripts\mcp-windbg.exe'\'' }; if ($cli) { Write-Output OK }' \
-    && mark_phase_done "mcp_windbg"
+  if phase_satisfied "mcp_windbg" '$cli = Get-Command mcp-windbg -EA SilentlyContinue; if (-not $cli -and (Test-Path '\''C:\Python314\Scripts\mcp-windbg.exe'\'')) { $cli = Get-Item '\''C:\Python314\Scripts\mcp-windbg.exe'\'' }; if ($cli) { Write-Output OK }'; then
+    mark_phase_done "mcp_windbg"
+  else
+    echo "[-] mcp-windbg did not satisfy verification after install" >&2
+    exit 1
+  fi
 else
   echo "[!] Missing vendored mcp-windbg at $MCP_WINDBG_SRC — :8300 will not come up"
 fi

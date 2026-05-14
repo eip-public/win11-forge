@@ -1,3 +1,6 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
 $src = @"
 using System;
 using System.Runtime.InteropServices;

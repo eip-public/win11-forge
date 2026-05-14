@@ -30,6 +30,8 @@ SSH_KEY="${REPO_ROOT}/vm-ssh-key"
 VERIFY_RESTORE=false
 SKIP_SETUP=false
 SSH_TIMEOUT_SECONDS="${SSH_TIMEOUT_SECONDS:-600}"
+[[ "$SSH_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] && (( SSH_TIMEOUT_SECONDS >= 5 )) \
+    || { echo "SSH_TIMEOUT_SECONDS must be a positive integer >= 5 (got: '$SSH_TIMEOUT_SECONDS')" >&2; exit 1; }
 USE_KEY=false
 RESTORE_ORIGINAL_SOURCE=""
 
