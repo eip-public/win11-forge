@@ -571,23 +571,23 @@ Legend:
 
 - Pervasive `|| true` swallowing virsh failures — **partial**:
     - KVM lab paths (backend/kvm.sh: 106-107, 168, 176-177) — **fixed** in 0129503
-    - setup.sh single-VM mode (295, 330, 337, 344, 351-355) — **open / Phase C** (only fires in `setup.sh start/stop/destroy/reset` against a single-VM domain; not exercised by lab paths)
-    - seal-vm-gold.sh (241, 244) — **open / Phase C**
-    - create-vm.sh (141-146) — **open / Phase C**
+    - setup.sh single-VM mode (295, 330, 337, 344, 351-355) — **fixed** in f654d07 (replaced with virsh_or_warn from lib/virsh-helpers.sh)
+    - seal-vm-gold.sh (241, 244) — **fixed** in f654d07
+    - create-vm.sh (141-146) — **fixed** in f654d07
 - Schedules tasks `/Run` never verified to start — **fixed** in 70bf563
-- install-winforge-bootstrap.ps1 swallows OpenSSH installer failure — **open / Phase C**
+- install-winforge-bootstrap.ps1 swallows OpenSSH installer failure — **fixed** in cbe48b0 ($LASTEXITCODE check + Tee to install-sshd.log)
 - kd_wrapper.py opens log files without a context manager — **partial**:
     - `_prompt_monitor` log_fh — **fixed** in 6f24798 (try/finally)
     - `_start_http` out/err handles — **fixed** in 8ece2db
-- setup-vm.sh mcp-windbg install isn't gated on success — **open / Phase C**
-- seal-vm-gold.sh wait_for_ssh silently no-ops with bad config — **open / Phase C**
+- setup-vm.sh mcp-windbg install isn't gated on success — **fixed** in cbe48b0 (explicit if/else with exit 1 on verification failure)
+- seal-vm-gold.sh wait_for_ssh silently no-ops with bad config — **fixed** in cbe48b0 (SSH_TIMEOUT_SECONDS regex + minimum value validation)
 - install-deps.sh install_binexport_plugin skips silently — **open / Phase D**
 
 ### Architecture & duplication (0 / 8 closed)
 
 - Inline xml.etree heredoc duplicated — **fixed** in 5f95243 (extracted to vm-setup/lib/set-disk-source.py)
 - Three sources of truth for VM MAC addresses — **fixed** in 301a3ba (vm-setup/lib/macs.env sourced by defaults.sh, backend/kvm.sh, backend/vmware.sh, install-deps.sh)
-- setup-vm.sh long inline PowerShell heredocs — **open / Phase C** (per-phase `.ps1` files; needs gold rebuild to validate)
+- setup-vm.sh long inline PowerShell heredocs — **fixed** in 8728e55 (8 heredocs extracted to vm-setup/setup-vm-phases/; install_tools.ps1 added in 71cf918 with vcredist2015 workaround + $LASTEXITCODE checks)
 - setup-vm.sh runs `iex` for chocolatey — **won't fix** (audit marked "note only"; documented chocolatey flow)
 - Duplicate ssh-helper functions across 4 scripts — **fixed** in fa54863 (shallow extract — only the truly-shared SSH options block into vm-setup/lib/ssh-helpers.sh's SSH_OPTS_COMMON array; per-script auth/timeout/output behavior preserved)
 - Three different logging styles across bash scripts — **fixed** in e38ecb3 (shallow extract of ok/warn/die into vm-setup/lib/log.sh; each script keeps its own log() because conventions differ intentionally)
@@ -597,10 +597,10 @@ Legend:
 
 ### Style & convention drift (3 / 9 closed)
 
-- `set -E` missing from every executable bash script — **open / Phase C** (the `-E` matters most in seal-vm-gold.sh's ERR trap; full validation needs gold rebuild)
-- Mixed shebangs — **open / Phase C** (fold in with the `-Eeuo` sweep — every script gets touched once)
-- Two vm-setup/*.ps1 files miss strict mode — **open / Phase C** (`setup-desktop-commander.ps1` runs during gold-build inside the guest)
-- Three different Python logging strategies across 3 scripts — **open / Phase C** (the in-guest scripts run only in the running lab; cleanest to validate via fresh spawn off a rebuilt gold)
+- `set -E` missing from every executable bash script — **fixed** in c27fa92 (sweep of 8 scripts; -E now matters for seal-vm-gold.sh's ERR trap, no-op but uniform for the rest)
+- Mixed shebangs — **fixed** in c27fa92 (4 scripts normalized to #!/usr/bin/env bash)
+- Two vm-setup/*.ps1 files miss strict mode — **fixed** in cbe48b0 (setup-desktop-commander.ps1 + kd_break.ps1 now Set-StrictMode -Version Latest + ErrorActionPreference = 'Stop')
+- Three different Python logging strategies across 3 scripts — **fixed** in cbe48b0 (kd_wrapper.py / target_mcp_http.py / windbg_mcp_http.py now all use file + sys.stderr handlers)
 - Python: missing type hints, multi-import line — **fixed** in ba87504 (kd_wrapper.py imports split PEP 8 style, type hints on all 10 functions)
 - vm-setup/target_mcp_http.py dead `HERE` — **fixed** in 498b948
 - setup.sh help command parsing brittle — **fixed** in 4c5f53f
