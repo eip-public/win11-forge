@@ -85,9 +85,8 @@ VIRTIO_ISO_NAME="virtio-win.iso"
 # ── logging ────────────────────────────────────────────────────────
 
 log()  { printf '\033[1;36m[%s]\033[0m %s\n' "$(date -u +%H:%M:%S)" "$*"; }
-ok()   { printf '\033[1;32m[+]\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m[!]\033[0m %s\n' "$*" >&2; }
-die()  { printf '\033[1;31m[-]\033[0m %s\n' "$*" >&2; exit 1; }
+# shellcheck source=vm-setup/lib/log.sh
+. "$VM_SETUP/lib/log.sh"
 
 # ── preflight ──────────────────────────────────────────────────────
 

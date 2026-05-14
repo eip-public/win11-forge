@@ -51,10 +51,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-ok()   { printf '\033[1;32m[+]\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m[!]\033[0m %s\n' "$*" >&2; }
-die()  { printf '\033[1;31m[-]\033[0m %s\n' "$*" >&2; exit 1; }
 log()  { printf '\033[1;36m[*]\033[0m %s\n' "$*"; }
+# shellcheck source=lib/log.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/log.sh"
 
 iso_download_disabled() {
     [[ "$WINFORGE_SKIP_ISO_DOWNLOAD" == "1" || "$WINFORGE_SKIP_ISO_DOWNLOAD" == "true" || "$WINFORGE_SKIP_ISO_DOWNLOAD" == "yes" ]]
