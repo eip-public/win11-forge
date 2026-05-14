@@ -585,7 +585,7 @@ Legend:
 
 ### Architecture & duplication (0 / 8 closed)
 
-- Inline xml.etree heredoc duplicated — **fixed** (commit pending; extracted to vm-setup/lib/set-disk-source.py)
+- Inline xml.etree heredoc duplicated — **fixed** in 5f95243 (extracted to vm-setup/lib/set-disk-source.py)
 - Three sources of truth for VM MAC addresses — **open / Phase B** (extract `vm-setup/macs.env`)
 - setup-vm.sh long inline PowerShell heredocs — **open / Phase C** (per-phase `.ps1` files; needs gold rebuild to validate)
 - setup-vm.sh runs `iex` for chocolatey — **won't fix** (audit marked "note only"; documented chocolatey flow)
