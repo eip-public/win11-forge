@@ -52,22 +52,27 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# SSH helper — uses key if available, password otherwise
+# SSH helper — uses key if available, password otherwise.
+# ServerAliveInterval/CountMax detect half-dead sessions where the remote
+# powershell has exited but sshd hasn't reported it (the script hangs at
+# the python_git phase every install without this — the install completes
+# on the guest, sshd never sends the exit status, ssh waits forever).
+SSH_KEEPALIVE_OPTS=(-o ServerAliveInterval=15 -o ServerAliveCountMax=4)
 ssh_cmd() {
   local cmd="$1"
   if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
-    ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$cmd" 2>&1
+    ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${SSH_KEEPALIVE_OPTS[@]}" "${VM_USER}@${VM_IP}" "$cmd" 2>&1
   else
-    sshpass -p "$VM_PASS" ssh "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$cmd" 2>&1
+    sshpass -p "$VM_PASS" ssh "${SSH_OPTS_COMMON[@]}" "${SSH_KEEPALIVE_OPTS[@]}" "${VM_USER}@${VM_IP}" "$cmd" 2>&1
   fi
 }
 
 scp_to() {
   local src="$1" dst="$2"
   if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
-    scp -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
+    scp -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${SSH_KEEPALIVE_OPTS[@]}" "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
   else
-    sshpass -p "$VM_PASS" scp "${SSH_OPTS_COMMON[@]}" "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
+    sshpass -p "$VM_PASS" scp "${SSH_OPTS_COMMON[@]}" "${SSH_KEEPALIVE_OPTS[@]}" "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
   fi
 }
 
@@ -202,28 +207,7 @@ fi
 
 # ── Install Python, 7zip, Git ─────────────────────────────────────
 
-run_phase "python_git" "Installing Python, 7-Zip, Git" '$py = Get-Command python -EA SilentlyContinue; if (-not $py -and (Test-Path '\''C:\Python314\python.exe'\'')) { $py = Get-Item '\''C:\Python314\python.exe'\'' }; $git = Get-Command git -EA SilentlyContinue; if (-not $git -and (Test-Path '\''C:\Program Files\Git\cmd\git.exe'\'')) { $git = Get-Item '\''C:\Program Files\Git\cmd\git.exe'\'' }; if ($py -and $git) { Write-Output OK }' '
-$choco = "C:\ProgramData\chocolatey\bin\choco.exe"
-if (-not (Test-Path $choco)) {
-    throw "Chocolatey executable not found at $choco"
-}
-& $choco install python3 -y --no-progress 2>&1 | Select-String "installed|already" | ForEach-Object { Write-Host $_ }
-& $choco install 7zip -y --no-progress 2>&1 | Select-String "installed|already" | ForEach-Object { Write-Host $_ }
-& $choco install git -y --no-progress 2>&1 | Select-String "installed|already" | ForEach-Object { Write-Host $_ }
-$env:Path = "C:\Python314;C:\Program Files\Git\cmd;C:\ProgramData\chocolatey\bin;$env:Path"
-$py = Get-Command python -EA SilentlyContinue
-if (-not $py -and (Test-Path "C:\Python314\python.exe")) {
-    $py = Get-Item "C:\Python314\python.exe"
-}
-$git = Get-Command git -EA SilentlyContinue
-if (-not $git -and (Test-Path "C:\Program Files\Git\cmd\git.exe")) {
-    $git = Get-Item "C:\Program Files\Git\cmd\git.exe"
-}
-if (-not $py -or -not $git) {
-    throw "Python and Git must both be installed before setup can continue"
-}
-Write-Host "[+] Tools installed"
-' "install_tools.ps1"
+run_phase "python_git" "Installing Python, 7-Zip, Git" '$py = Get-Command python -EA SilentlyContinue; if (-not $py -and (Test-Path '\''C:\Python314\python.exe'\'')) { $py = Get-Item '\''C:\Python314\python.exe'\'' }; $git = Get-Command git -EA SilentlyContinue; if (-not $git -and (Test-Path '\''C:\Program Files\Git\cmd\git.exe'\'')) { $git = Get-Item '\''C:\Program Files\Git\cmd\git.exe'\'' }; if ($py -and $git) { Write-Output OK }' "$(<"$SCRIPT_DIR/setup-vm-phases/install_tools.ps1")" "install_tools.ps1"
 
 # ── Install Windows SDK Debugging Tools (cdb.exe) ──────────────────
 
