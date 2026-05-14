@@ -119,6 +119,7 @@ def _start_kd(cycle):
 
 def _start_http():
     log.info(f"Starting HTTP MCP server on port {HTTP_PORT}")
+    out = err = None
     try:
         out = open(str(LOG_DIR / "mcp-http.out.log"), "a")
         err = open(str(LOG_DIR / "mcp-http.err.log"), "a")
@@ -130,6 +131,15 @@ def _start_http():
     except Exception as e:
         log.warning(f"_start_http failed: {e}; will retry next iteration")
         return None
+    finally:
+        # subprocess.Popen dup's stdout/stderr into the child; the parent's
+        # file objects are no longer needed and would otherwise leak until
+        # GC — same Windows GC-determinism issue documented for the prompt
+        # monitor at line 184. Close on both success and failure paths.
+        for fh in (out, err):
+            if fh is not None:
+                try: fh.close()
+                except Exception: pass
 
 
 def _wait_for_kd_connect(proc, cycle):
