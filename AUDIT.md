@@ -606,7 +606,7 @@ Legend:
 - setup.sh help command parsing brittle — **fixed** in 4c5f53f
 - _lab_status / _lab_spawn divergent endpoint tables — **fixed** in de61d52
 - setup.sh lab-flag parser doesn't shift consumed flags — **fixed** in 9f39c4b
-- _lab_kd_connected opens a fresh SSH connection on every poll — **open / Phase A** (ControlMaster=auto)
+- _lab_kd_connected opens a fresh SSH connection on every poll — **won't fix** (measured 2026-05-13: ControlMaster=auto saves ~0.35s/poll, ~21s off a 180s wait. Dominant cost is cmd.exe+findstr inside the Windows guest, not the SSH handshake. Mux works mechanically — socket lifecycle clean, Windows OpenSSH honors the multiplexed channel — but the impact is below the threshold to justify the added cleanup discipline.)
 - Tests cover ~10% of setup.sh surface — **open / separate effort** (`tests/*.bats` expansion)
 
 ### Discovered outside the audit (also fixed)
