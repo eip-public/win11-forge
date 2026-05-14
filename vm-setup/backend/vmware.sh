@@ -37,8 +37,10 @@ DEBUGGER_IP="${_VMWARE_SUBNET}.101"
 # VMware uses its own OUI (00:50:56:xx:xx:xx) for static MACs; the
 # auto-generated range is reserved by vmrun. Pinning these lets vmnet8 dhcpd
 # hand out matching .100/.101 reservations.
-TARGET_MAC="00:50:56:11:11:11"
-DEBUGGER_MAC="00:50:56:22:22:22"
+# shellcheck source=../lib/macs.env
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/macs.env"
+TARGET_MAC="$VMWARE_TARGET_MAC"
+DEBUGGER_MAC="$VMWARE_DEBUGGER_MAC"
 
 VMWARE_DIR="$IMAGES_DIR/vmware"
 GOLD_VMX="$VMWARE_DIR/${VM_NAME}-gold/${VM_NAME}-gold.vmx"

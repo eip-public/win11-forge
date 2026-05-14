@@ -304,7 +304,9 @@ vmware_mode() {
     [[ -n "$cidr" ]] || die "vmnet8 has no IPv4 — sudo vmware-networks --start"
     subnet="${cidr%.*/*}"
     local target_ip="${subnet}.100" debugger_ip="${subnet}.101"
-    local target_mac="00:50:56:11:11:11" debugger_mac="00:50:56:22:22:22"
+    # shellcheck source=vm-setup/lib/macs.env
+    . "$(dirname "${BASH_SOURCE[0]}")/vm-setup/lib/macs.env"
+    local target_mac="$VMWARE_TARGET_MAC" debugger_mac="$VMWARE_DEBUGGER_MAC"
 
     log "vmnet8 subnet: ${subnet}.0/24"
     log "Adding DHCP reservations: target=${target_ip} debugger=${debugger_ip}"
