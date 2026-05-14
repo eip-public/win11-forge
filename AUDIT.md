@@ -547,7 +547,7 @@ Legend:
 - **partial** — some sites fixed; remaining sites listed.
 - **open / Phase A** — lab-exercisable in current spawn state. Next-up.
 - **open / Phase B** — architecture refactor; lab-exercisable via `lab destroy && lab spawn` cycle. No gold rebuild needed.
-- **open / Phase C** — needs a full `setup.sh install` (gold rebuild, multi-hour). Batch these and ship in one rebuild cycle.
+- **open / Phase C** — needs a full `setup.sh install` (gold rebuild, ~40 min). Batch these and ship in one rebuild cycle.
 - **open / Phase D** — host-install path (`install-deps.sh`); test on a clean host or in a sandbox.
 - **won't fix** — audit explicitly marked "note only" or out of scope.
 
@@ -591,7 +591,7 @@ Legend:
 - setup-vm.sh runs `iex` for chocolatey — **won't fix** (audit marked "note only"; documented chocolatey flow)
 - Duplicate ssh-helper functions across 4 scripts — **open / Phase B** (extract `vm-setup/lib/ssh-helpers.sh`)
 - Three different logging styles across bash scripts — **open / Phase B** (extract `vm-setup/lib/log.sh`)
-- Two sets of constants for gold image name and IP defaults + dead `CURRENT_GOLD_IP` — **open / Phase B**
+- Two sets of constants for gold image name and IP defaults + dead `CURRENT_GOLD_IP` — **fixed** (commit pending; extracted to vm-setup/lib/defaults.sh, GOLD_MAC→VM_MAC, GOLD_IP→VM_IP, CURRENT_GOLD_IP deleted, env-vs-flag dup at cmd_install dropped)
 - Stale name PHASE0_DIR — **fixed** in e6e7208
 - dc_set JSON-quoting helper duplicated — **open / Phase B**
 

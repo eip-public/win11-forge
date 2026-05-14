@@ -20,25 +20,23 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 IMAGES_DIR="$REPO_ROOT/vm-images"
 
-# Defaults
+# Shared VM defaults (VM_CPUS, DISK_SIZE, VM_USER, VM_PASS, VM_IP, VM_MAC).
+# VM_MAC default pins this VM to VM_IP via libvirt DHCP host reservation
+# that setup.sh adds to the default network. Override --mac for pair spawns
+# (e.g. the debugger role uses a different MAC to get .101).
+# shellcheck source=lib/defaults.sh
+. "$SCRIPT_DIR/lib/defaults.sh"
+
+# Standalone profile (differs from setup.sh's gold-build profile).
 VM_NAME="${VM_NAME:-winforge-dev}"
 VM_RAM="${VM_RAM:-4096}"
-VM_CPUS="${VM_CPUS:-4}"
-DISK_SIZE="${DISK_SIZE:-64G}"
 ISO="${ISO:-$IMAGES_DIR/win11-ltsc.iso}"
 VIRTIO_ISO="$IMAGES_DIR/virtio-win.iso"
 UNATTEND_ISO="$IMAGES_DIR/unattend.iso"
 QCOW2="$IMAGES_DIR/${VM_NAME}.qcow2"
 SSH_KEY="$REPO_ROOT/vm-ssh-key"
-VM_IP="192.168.122.100"
 VNC_PORT=5900
 UNATTEND_XML="$SCRIPT_DIR/autounattend.xml"
-VM_USER="forge"
-VM_PASS="forge123"
-# Default MAC pins this VM to 192.168.122.100 via libvirt DHCP host reservation
-# that setup.sh adds to the default network. Override --mac for pair spawns
-# (e.g. the debugger role uses a different MAC to get .101).
-VM_MAC="${VM_MAC:-52:54:00:11:11:11}"
 
 # Parse args
 while [[ $# -gt 0 ]]; do

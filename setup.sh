@@ -58,19 +58,15 @@ IMAGES_DIR="$ROOT/vm-images"
 ISOS_DIR="$ROOT/isos"
 SSH_KEY="$ROOT/vm-ssh-key"
 
+# Shared VM defaults (VM_CPUS, DISK_SIZE, VM_USER, VM_PASS, VM_IP, VM_MAC).
+# Profile-specific values (VM_NAME, VM_RAM for the gold-build profile) below.
+# shellcheck source=vm-setup/lib/defaults.sh
+. "$VM_SETUP/lib/defaults.sh"
+
+# Gold-build profile (single-VM, KVM-only — virt-install pipeline).
+# WINFORGE_BACKEND only affects the kernel-debug lab pair, not this profile.
 VM_NAME="${VM_NAME:-winforge-win11-24h2}"
 VM_RAM="${VM_RAM:-8192}"
-VM_CPUS="${VM_CPUS:-4}"
-DISK_SIZE="${DISK_SIZE:-64G}"
-VM_IP="${VM_IP:-192.168.122.100}"
-VM_USER="forge"
-VM_PASS="forge123"
-
-# Single-VM (gold-build) is always KVM-only — the install pipeline uses
-# virt-install. WINFORGE_BACKEND only affects the kernel-debug lab pair.
-GOLD_MAC="52:54:00:11:11:11"
-GOLD_IP="192.168.122.100"
-CURRENT_GOLD_IP="192.168.122.100"    # the static IP baked into the gold image
 
 # Kernel-debug lab backend: kvm (default) or vmware. Sourced below; provides
 # vm_provision/start/stop/state, backend_preflight, backend_ensure_network,
@@ -123,10 +119,10 @@ preflight() {
 # the install/single-VM flow always lands on a predictable IP. The lab path
 # adds its own reservations via backend_ensure_network. Idempotent.
 ensure_dhcp_reservations() {
-    if ! virsh net-dumpxml default | grep -qF "mac='$GOLD_MAC'"; then
+    if ! virsh net-dumpxml default | grep -qF "mac='$VM_MAC'"; then
         virsh net-update default add ip-dhcp-host \
-            "<host mac='$GOLD_MAC' ip='$GOLD_IP'/>" --live --config >/dev/null 2>&1 \
-          || warn "Could not add DHCP reservation for $GOLD_MAC -> $GOLD_IP (may already exist)"
+            "<host mac='$VM_MAC' ip='$VM_IP'/>" --live --config >/dev/null 2>&1 \
+          || warn "Could not add DHCP reservation for $VM_MAC -> $VM_IP (may already exist)"
     fi
 }
 
@@ -152,7 +148,7 @@ ensure_ssh_key() {
     fi
 }
 
-# Undefine any stale `winforge-*` libvirt domains that hold GOLD_MAC, so
+# Undefine any stale `winforge-*` libvirt domains that hold VM_MAC, so
 # virt-install doesn't refuse with "MAC address is in use". Errors (not
 # auto-cleans) if a domain holding the MAC is either currently running or
 # doesn't match the winforge-* namespace — those are not our call to kill.
@@ -161,7 +157,7 @@ preflight_clean_mac_collisions() {
     local winforge_stale=() foreign=() running=()
     for vm in $(virsh list --all --name 2>/dev/null); do
         [[ -z "$vm" ]] && continue
-        virsh dumpxml "$vm" 2>/dev/null | grep -qF "address='$GOLD_MAC'" || continue
+        virsh dumpxml "$vm" 2>/dev/null | grep -qF "address='$VM_MAC'" || continue
         state="$(virsh domstate "$vm" 2>/dev/null)"
         if [[ "$state" == "running" ]]; then
             running+=("$vm")
@@ -172,13 +168,13 @@ preflight_clean_mac_collisions() {
         fi
     done
     if [[ ${#running[@]} -gt 0 ]]; then
-        die "Running domain(s) hold $GOLD_MAC: ${running[*]}. Stop them first (./setup.sh lab destroy, or virsh destroy <name>)."
+        die "Running domain(s) hold $VM_MAC: ${running[*]}. Stop them first (./setup.sh lab destroy, or virsh destroy <name>)."
     fi
     if [[ ${#foreign[@]} -gt 0 ]]; then
-        die "Non-winforge domain(s) hold $GOLD_MAC: ${foreign[*]}. Refusing to auto-clean — free the MAC before installing."
+        die "Non-winforge domain(s) hold $VM_MAC: ${foreign[*]}. Refusing to auto-clean — free the MAC before installing."
     fi
     if [[ ${#winforge_stale[@]} -gt 0 ]]; then
-        log "Clearing stale winforge-* domains on $GOLD_MAC: ${winforge_stale[*]}"
+        log "Clearing stale winforge-* domains on $VM_MAC: ${winforge_stale[*]}"
         for vm in "${winforge_stale[@]}"; do
             virsh undefine "$vm" --nvram >/dev/null 2>&1 \
                 || warn "Failed to undefine $vm (may leave MAC collision)"
@@ -231,14 +227,13 @@ cmd_install() {
     ensure_ssh_key
 
     log "Running create-vm.sh ($VM_NAME, ${VM_RAM}MB, $VM_CPUS vCPU, $DISK_SIZE disk)"
-    VM_CPUS="$VM_CPUS" DISK_SIZE="$DISK_SIZE" VM_MAC="$GOLD_MAC" \
-        "$VM_SETUP/create-vm.sh" \
-            --iso "$IMAGES_DIR/$WIN_ISO_NAME" \
-            --name "$VM_NAME" \
-            --mac "$GOLD_MAC" \
-            --ram "$VM_RAM" \
-            --cpus "$VM_CPUS" \
-            --disk-size "$DISK_SIZE"
+    "$VM_SETUP/create-vm.sh" \
+        --iso "$IMAGES_DIR/$WIN_ISO_NAME" \
+        --name "$VM_NAME" \
+        --mac "$VM_MAC" \
+        --ram "$VM_RAM" \
+        --cpus "$VM_CPUS" \
+        --disk-size "$DISK_SIZE"
 
     log "Running seal-vm-gold.sh ($VM_NAME at $VM_IP)"
     # --skip-setup: create-vm.sh already ran setup-vm.sh; no need to rerun.
