@@ -14,15 +14,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PHASE0_DIR="$(dirname "$SCRIPT_DIR")"
-IMAGES_DIR="$PHASE0_DIR/vm-images"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+IMAGES_DIR="$REPO_ROOT/vm-images"
 SETUP_VM="$SCRIPT_DIR/setup-vm.sh"
 
 VM_NAME=""
 VM_IP="192.168.122.100"
 VM_USER="forge"
 VM_PASS="forge123"
-SSH_KEY="${PHASE0_DIR}/vm-ssh-key"
+SSH_KEY="${REPO_ROOT}/vm-ssh-key"
 VERIFY_RESTORE=false
 SKIP_SETUP=false
 SSH_TIMEOUT_SECONDS="${SSH_TIMEOUT_SECONDS:-600}"

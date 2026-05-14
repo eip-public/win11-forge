@@ -14,13 +14,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PHASE0_DIR="$(dirname "$SCRIPT_DIR")"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Defaults
 VM_IP="192.168.122.100"
 VM_USER="forge"
 VM_PASS="forge123"
-SSH_KEY="${PHASE0_DIR}/vm-ssh-key"
+SSH_KEY="${REPO_ROOT}/vm-ssh-key"
 USE_KEY=false
 
 wait_for_ssh() {

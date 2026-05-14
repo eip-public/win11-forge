@@ -17,8 +17,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PHASE0_DIR="$(dirname "$SCRIPT_DIR")"
-IMAGES_DIR="$PHASE0_DIR/vm-images"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+IMAGES_DIR="$REPO_ROOT/vm-images"
 
 # Defaults
 VM_NAME="${VM_NAME:-winforge-dev}"
@@ -29,7 +29,7 @@ ISO="${ISO:-$IMAGES_DIR/win11-ltsc.iso}"
 VIRTIO_ISO="$IMAGES_DIR/virtio-win.iso"
 UNATTEND_ISO="$IMAGES_DIR/unattend.iso"
 QCOW2="$IMAGES_DIR/${VM_NAME}.qcow2"
-SSH_KEY="$PHASE0_DIR/vm-ssh-key"
+SSH_KEY="$REPO_ROOT/vm-ssh-key"
 VM_IP="192.168.122.100"
 VNC_PORT=5900
 UNATTEND_XML="$SCRIPT_DIR/autounattend.xml"
@@ -125,7 +125,7 @@ fi
 
 if [[ "$IS_VHD" == "false" ]]; then
   echo "[*] Building unattend ISO..."
-  UNATTEND_DIR="$PHASE0_DIR/unattend-iso"
+  UNATTEND_DIR="$REPO_ROOT/unattend-iso"
   UNATTEND_BUILD_DIR=$(mktemp -d)
   cp -a "$UNATTEND_DIR/." "$UNATTEND_BUILD_DIR/"
   cp "$UNATTEND_XML" "$UNATTEND_BUILD_DIR/autounattend.xml"
