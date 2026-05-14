@@ -38,7 +38,7 @@
 #   DISK_SIZE  qcow2 size (default: 64G)
 #   VM_IP      expected IP (default: 192.168.122.100 — via DHCP host reservation)
 
-set -euo pipefail
+set -Eeuo pipefail
 
 # Always target the system libvirtd (not qemu:///session, which is per-user
 # and has no default network). If the current shell isn't in the libvirt

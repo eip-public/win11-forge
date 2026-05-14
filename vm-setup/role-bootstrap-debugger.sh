@@ -14,7 +14,7 @@
 # Usage:
 #   role-bootstrap-debugger.sh <vm-ip> <ssh-key>
 
-set -euo pipefail
+set -Eeuo pipefail
 
 VM_IP="${1:?usage: $0 <vm-ip> <ssh-key>}"
 SSH_KEY="${2:?usage: $0 <vm-ip> <ssh-key>}"

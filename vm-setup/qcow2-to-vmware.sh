@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Convert a WinForge qcow2 image to a self-contained VMware Workstation VM.
 # Non-destructive: original qcow2 is left untouched.
@@ -14,7 +14,7 @@
 #   - NIC is e1000e (native Win driver). VMware NAT by default.
 #   - Firmware is UEFI to match OVMF; secure boot off (matches the lab build).
 
-set -euo pipefail
+set -Eeuo pipefail
 
 if [[ $# -lt 2 ]]; then
   echo "Usage: $0 <name> <source.qcow2> [ram_mb=4096] [vcpus=4]" >&2

@@ -8,7 +8,7 @@
 #   ./install-deps.sh          # install everything
 #   ./install-deps.sh check    # only verify, don't change anything
 
-set -euo pipefail
+set -Eeuo pipefail
 
 TARGET_USER="${SUDO_USER:-$USER}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

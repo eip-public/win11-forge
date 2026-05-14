@@ -18,7 +18,7 @@
 # Prereqs:
 #   - VM is up, SSH reachable, forge user has admin (UAC was disabled in gold).
 
-set -euo pipefail
+set -Eeuo pipefail
 
 VM_IP="${1:?usage: $0 <vm-ip> <ssh-key>}"
 SSH_KEY="${2:?usage: $0 <vm-ip> <ssh-key>}"
