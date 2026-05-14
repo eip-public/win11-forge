@@ -52,12 +52,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# SSH helper — uses key if available, password otherwise.
+# SSH helper -- uses key if available, password otherwise.
 # ServerAliveInterval/CountMax detect half-dead sessions where the remote
 # powershell has exited but sshd hasn't reported it (the script hangs at
-# the python_git phase every install without this — the install completes
+# the python_git phase every install without this -- the install completes
 # on the guest, sshd never sends the exit status, ssh waits forever).
-SSH_KEEPALIVE_OPTS=(-o ServerAliveInterval=15 -o ServerAliveCountMax=4)
+#
+# CountMax=60 with Interval=15 = ~15 min tolerance. The longest legitimate
+# silent stretches are VS Build Tools (~10 min) and the Windows SDK install
+# (~5 min); at 60 second tolerance (Phase C default), choco's slower phases
+# got killed before they had a chance to complete.
+SSH_KEEPALIVE_OPTS=(-o ServerAliveInterval=15 -o ServerAliveCountMax=60)
 ssh_cmd() {
   local cmd="$1"
   if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
