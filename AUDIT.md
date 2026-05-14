@@ -605,7 +605,7 @@ Legend:
 - vm-setup/target_mcp_http.py dead `HERE` — **fixed** in 498b948
 - setup.sh help command parsing brittle — **fixed** in 4c5f53f
 - _lab_status / _lab_spawn divergent endpoint tables — **fixed** in de61d52
-- setup.sh lab-flag parser doesn't shift consumed flags — **fixed** (commit pending)
+- setup.sh lab-flag parser doesn't shift consumed flags — **fixed** in 9f39c4b
 - _lab_kd_connected opens a fresh SSH connection on every poll — **open / Phase A** (ControlMaster=auto)
 - Tests cover ~10% of setup.sh surface — **open / separate effort** (`tests/*.bats` expansion)
 
