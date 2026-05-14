@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # WinForge VM Creation Script
 #
@@ -14,7 +14,7 @@
 #   - VirtIO drivers at vm-images/virtio-win.iso
 #   - autounattend.xml configured
 
-set -euo pipefail
+set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"

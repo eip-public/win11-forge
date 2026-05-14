@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # WinForge VM Post-Install Setup
 #
@@ -11,7 +11,7 @@
 #   ./setup-vm.sh --ip 192.168.122.100 --password forge123
 #   ./setup-vm.sh --ip 192.168.122.100 --user Administrator --password forge123F
 
-set -euo pipefail
+set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"

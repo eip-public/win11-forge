@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # WinForge VM Gold Sealer
 #
@@ -11,7 +11,7 @@
 #   ./seal-vm-gold.sh --vm winforge-win11-24h2 --ip 192.168.122.100 --verify-restore
 #
 
-set -euo pipefail
+set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
