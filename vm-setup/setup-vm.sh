@@ -31,6 +31,21 @@ USE_KEY=false
 POLL_INTERVAL_S="${POLL_INTERVAL_S:-10}"
 POLL_MAX_S="${POLL_MAX_S:-3600}"
 
+# Bounded SSH probe. A "should be sub-second" command that doesn't return
+# in PROBE_TIMEOUT_S means the Windows OpenSSH worker has wedged (we've seen
+# this happen post-auth: TCP stays ESTAB on the client, no FIN/RST from
+# server, no further bytes either direction). 15s is generous for the kind
+# of cheap probes we run; if it doesn't complete in that, that IS the
+# failure signal we need — not a mask.
+_ssh_probe() {
+  local probe_timeout_s="${PROBE_TIMEOUT_S:-15}"
+  if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
+    timeout "$probe_timeout_s" ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$@" 2>&1
+  else
+    timeout "$probe_timeout_s" sshpass -p "$VM_PASS" ssh "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$@" 2>&1
+  fi
+}
+
 # Wait until sshd is *stable*, not merely reachable.
 #
 # Post-reboot, Windows OpenSSH goes through a flaky window where 'echo OK'
@@ -61,7 +76,7 @@ wait_for_ssh() {
   echo "[*] Waiting for ${label} (need ${stable_required_s}s uninterrupted, max ${max_wall_s}s)"
   while (( total < max_wall_s )); do
     local out rc=0
-    out=$(ssh_cmd "echo OK" 2>&1) || rc=$?
+    out=$(_ssh_probe "echo OK") || rc=$?
     if (( rc == 0 )) && [[ "$out" == *OK* ]]; then
       ok_count=$((ok_count + 1))
       consecutive_ok=$((consecutive_ok + 1))
@@ -71,9 +86,13 @@ wait_for_ssh() {
       fi
     else
       fail_count=$((fail_count + 1))
-      last_fail="$out"
+      if (( rc == 124 )); then
+        last_fail="probe wedged (timed out after ${PROBE_TIMEOUT_S:-15}s, sshd worker stuck post-auth)"
+      else
+        last_fail="$out"
+      fi
       if (( consecutive_ok > 0 )); then
-        echo "  t+${total}s: ssh flapped (had ${consecutive_ok}s OK), resetting counter"
+        echo "  t+${total}s: probe failed (had ${consecutive_ok}s OK) -- ${last_fail}"
       fi
       consecutive_ok=0
     fi
