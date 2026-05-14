@@ -123,28 +123,7 @@ run_phase() {
 }
 
 write_tools_ready() {
-  upload_and_run_ps1 '
-$root = "C:\winforge"
-New-Item -ItemType Directory -Path $root -Force | Out-Null
-Get-ScheduledTask -TaskName "WinForgeBootstrap" -ErrorAction SilentlyContinue |
-    Stop-ScheduledTask -ErrorAction SilentlyContinue
-Get-ScheduledTask -TaskName "WinForgeBootstrap" -ErrorAction SilentlyContinue |
-    Disable-ScheduledTask -ErrorAction SilentlyContinue | Out-Null
-$ips = @(
-    Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-        Where-Object { $_.IPAddress -ne "127.0.0.1" } |
-        Select-Object -ExpandProperty IPAddress
-)
-$payload = [ordered]@{
-    state = "tools_ready"
-    phase = "verify"
-    message = "WinForge tooling verified"
-    timestamp = (Get-Date).ToString("o")
-    hostname = $env:COMPUTERNAME
-    ips = $ips
-}
-$payload | ConvertTo-Json -Depth 4 | Set-Content -Path "C:\winforge\ready.json" -Encoding ASCII
-' "write_tools_ready.ps1" >/dev/null
+  upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/write_tools_ready.ps1")" "write_tools_ready.ps1" >/dev/null
 }
 
 echo "=== WinForge VM Setup ==="
@@ -161,55 +140,18 @@ wait_for_ssh "SSH"
 echo "[*] Creating directories..."
 # Bootstrap C:\winforge first (needed before any upload_and_run_ps1 call)
 ssh_cmd 'powershell -Command "New-Item -ItemType Directory -Path C:\winforge -Force | Out-Null"' >/dev/null
-upload_and_run_ps1 '
-foreach ($d in @("C:\winforge","C:\winforge\tools","C:\winforge\targets","C:\winforge\symbols","C:\winforge\patch-work")) {
-    New-Item -ItemType Directory -Path $d -Force | Out-Null
-}
-Write-Host "[+] Directories created"
-' "create_dirs.ps1"
+upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/create_dirs.ps1")" "create_dirs.ps1"
 
 # ── Disable firewall, UAC, Defender ────────────────────────────────
 
 echo "[*] Disabling firewall, UAC, Defender..."
-upload_and_run_ps1 '
-Set-NetFirewallProfile -All -Enabled False
-reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v EnableLUA /t REG_DWORD /d 0 /f | Out-Null
-Set-MpPreference -DisableRealtimeMonitoring 1 -ErrorAction SilentlyContinue
-Set-MpPreference -DisableBehaviorMonitoring 1 -ErrorAction SilentlyContinue
-# Freeze the OS build. Without ALL of these, a background Windows Update will
-# bump the target past its CVE-vulnerable baseline mid-run and destroy the
-# research target — WaaSMedicSvc specifically re-enables wuauserv if only
-# that one is disabled.
-foreach ($svc in "wuauserv","UsoSvc","BITS") {
-    Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
-    Stop-Service  -Name $svc -Force         -ErrorAction SilentlyContinue
-}
-# WaaSMedicSvc is ACL-protected against sc config; flip via registry.
-reg add "HKLM\SYSTEM\CurrentControlSet\Services\WaaSMedicSvc" /v Start /t REG_DWORD /d 4 /f | Out-Null
-foreach ($p in "\Microsoft\Windows\UpdateOrchestrator\", "\Microsoft\Windows\WindowsUpdate\", "\Microsoft\Windows\WaaSMedic\") {
-    Get-ScheduledTask -TaskPath $p -ErrorAction SilentlyContinue |
-        Disable-ScheduledTask -ErrorAction SilentlyContinue | Out-Null
-}
-$auKey = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"
-New-Item -Path $auKey -Force | Out-Null
-Set-ItemProperty -Path $auKey -Name NoAutoUpdate -Type DWord -Value 1 -Force
-Set-ItemProperty -Path $auKey -Name AUOptions    -Type DWord -Value 2 -Force
-Write-Host "[+] Security controls disabled"
-' "disable_security.ps1"
+upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/disable_security.ps1")" "disable_security.ps1"
 
 # ── Deploy SSH key ─────────────────────────────────────────────────
 
 if [[ -f "$SSH_KEY" ]]; then
   echo "[*] Deploying SSH key..."
-  upload_and_run_ps1 '
-$profileRoot = [Environment]::GetFolderPath("UserProfile")
-New-Item -ItemType Directory -Path (Join-Path $profileRoot ".ssh") -Force | Out-Null
-New-Item -ItemType Directory -Path C:\ProgramData\ssh -Force | Out-Null
-Write-Host "[+] SSH dirs created"
-if (([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    New-Item -ItemType File -Path C:\ProgramData\ssh\administrators_authorized_keys -Force | Out-Null
-}
-' "ssh_dirs.ps1"
+  upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/ssh_dirs.ps1")" "ssh_dirs.ps1"
   scp_to "${SSH_KEY}.pub" "C:/Users/$VM_USER/.ssh/authorized_keys"
   scp_to "${SSH_KEY}.pub" "C:/ProgramData/ssh/administrators_authorized_keys"
   ssh_cmd 'icacls C:\ProgramData\ssh\administrators_authorized_keys /inheritance:r /grant Administrators:F /grant SYSTEM:F' >/dev/null
@@ -220,10 +162,7 @@ fi
 # ── Set symbol path ────────────────────────────────────────────────
 
 echo "[*] Setting symbol path..."
-upload_and_run_ps1 '
-[System.Environment]::SetEnvironmentVariable("_NT_SYMBOL_PATH", "srv*C:\winforge\symbols*https://msdl.microsoft.com/download/symbols", "Machine")
-Write-Host "[+] _NT_SYMBOL_PATH set"
-' "set_symbols.ps1"
+upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/set_symbols.ps1")" "set_symbols.ps1"
 
 # ── Install Chocolatey ─────────────────────────────────────────────
 
@@ -233,12 +172,7 @@ if phase_satisfied "choco" 'if (Test-Path '\''C:\ProgramData\chocolatey\bin\choc
   mark_phase_done "choco"
 else
   echo "[*] Installing Chocolatey..."
-  CHOCOLATEY_BOOTSTRAP_OUTPUT=$(upload_and_run_ps1 '
-Set-ExecutionPolicy Bypass -Scope Process -Force
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-iex ((New-Object System.Net.WebClient).DownloadString("https://community.chocolatey.org/install.ps1"))
-Write-Host "[+] Chocolatey installed"
-' "install_choco.ps1")
+  CHOCOLATEY_BOOTSTRAP_OUTPUT=$(upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/install_choco.ps1")" "install_choco.ps1")
   printf '%s\n' "$CHOCOLATEY_BOOTSTRAP_OUTPUT"
   mark_phase_done "choco"
 fi
@@ -384,20 +318,7 @@ elif [[ -d "$MCP_WINDBG_SRC/src" ]]; then
   tar -C "$MCP_WINDBG_SRC" -czf "$TARBALL" pyproject.toml src LICENSE README.md VENDORED.md
   scp_to "$TARBALL" "C:/winforge/mcp-windbg-src.tar.gz"
   rm -f "$TARBALL"
-  upload_and_run_ps1 '
-if (Test-Path C:\winforge\mcp-windbg-src) { Remove-Item -Recurse -Force C:\winforge\mcp-windbg-src }
-New-Item -ItemType Directory -Path C:\winforge\mcp-windbg-src | Out-Null
-tar -xzf C:\winforge\mcp-windbg-src.tar.gz -C C:\winforge\mcp-windbg-src
-python -m pip install --quiet C:\winforge\mcp-windbg-src 2>&1 | Select-Object -Last 3
-if ($LASTEXITCODE -ne 0) { throw "mcp-windbg pip install failed ($LASTEXITCODE)" }
-$cli = Get-Command mcp-windbg -EA SilentlyContinue
-if (-not $cli) {
-    $fallback = "C:\Python314\Scripts\mcp-windbg.exe"
-    if (Test-Path $fallback) { $cli = Get-Item $fallback }
-}
-if (-not $cli) { throw "mcp-windbg CLI missing after install" }
-Write-Host ("[+] mcp-windbg installed at " + $cli.Source)
-' "install_mcp_windbg.ps1"
+  upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/install_mcp_windbg.ps1")" "install_mcp_windbg.ps1"
   if phase_satisfied "mcp_windbg" '$cli = Get-Command mcp-windbg -EA SilentlyContinue; if (-not $cli -and (Test-Path '\''C:\Python314\Scripts\mcp-windbg.exe'\'')) { $cli = Get-Item '\''C:\Python314\Scripts\mcp-windbg.exe'\'' }; if ($cli) { Write-Output OK }'; then
     mark_phase_done "mcp_windbg"
   else
@@ -458,40 +379,7 @@ fi
 
 echo ""
 echo "=== Verification ==="
-upload_and_run_ps1 '
-Write-Host "OS:      $(cmd /c ver 2>&1 | Select-String Version)"
-$cdb = Get-Command cdb.exe -EA SilentlyContinue
-if ($cdb) { Write-Host "CDB:     $($cdb.Source)" } else { Write-Host "CDB:     NOT FOUND" }
-$cl = Get-ChildItem -Path "C:\Program Files*\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe" -EA SilentlyContinue | Select-Object -First 1
-if ($cl) { Write-Host "cl.exe:  $($cl.FullName)" } else { Write-Host "cl.exe:  NOT FOUND" }
-$env:Path = "C:\Python314;C:\Program Files\Git\cmd;C:\ProgramData\chocolatey\bin;$env:Path"
-$py = Get-Command python -EA SilentlyContinue
-if (-not $py -and (Test-Path "C:\Python314\python.exe")) {
-    $py = Get-Item "C:\Python314\python.exe"
-}
-if ($py) { Write-Host "Python:  $($py.Source)" } else { Write-Host "Python:  NOT FOUND" }
-$git = Get-Command git -EA SilentlyContinue
-if (-not $git -and (Test-Path "C:\Program Files\Git\cmd\git.exe")) {
-    $git = Get-Item "C:\Program Files\Git\cmd\git.exe"
-}
-if ($git) { Write-Host "Git:     $($git.Source)" } else { Write-Host "Git:     NOT FOUND" }
-Write-Host "SSH:     $(Get-Service sshd | Select-Object -ExpandProperty Status)"
-Write-Host "FW:      $(Get-NetFirewallProfile -Name Domain | Select-Object -ExpandProperty Enabled)"
-$dll = Get-ChildItem -Path "C:\winforge\windbg-ext-mcp" -Recurse -Filter "windbgmcpExt.dll" -EA SilentlyContinue | Select-Object -First 1
-if ($dll) { Write-Host ("MCP dll: {0}" -f $dll.FullName) } else { Write-Host "MCP dll: NOT FOUND" }
-$http = Test-Path "C:\winforge\windbg-ext-mcp\run_http.py"
-Write-Host ("MCP http wrapper: {0}" -f $(if ($http) { "present" } else { "NOT FOUND" }))
-$env:Path = "C:\Program Files\nodejs;$env:Path"
-$node = Get-Command node -EA SilentlyContinue
-if ($node) { Write-Host ("Node:    {0} ({1})" -f $node.Source, (node --version 2>&1)) } else { Write-Host "Node:    NOT FOUND" }
-$dcmcp = Test-Path "C:\winforge\node_modules\@wonderwhy-er\desktop-commander\dist\index.js"
-Write-Host ("DCMCP:   {0}" -f $(if ($dcmcp) { "present" } else { "NOT FOUND" }))
-$tmcp = Test-Path "C:\winforge\target_mcp_http.py"
-Write-Host ("Target MCP relay: {0}" -f $(if ($tmcp) { "present" } else { "NOT FOUND" }))
-if (-not $cdb -or -not $cl -or -not $py -or -not $git -or -not $dll -or -not $http -or -not $node -or -not $dcmcp -or -not $tmcp) {
-    throw "Verification failed: required WinForge tools are missing"
-}
-' "verify.ps1"
+upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/verify.ps1")" "verify.ps1"
 write_tools_ready
 
 echo ""
