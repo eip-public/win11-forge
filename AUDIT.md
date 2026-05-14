@@ -593,7 +593,7 @@ Legend:
 - Three different logging styles across bash scripts — **open / Phase B** (extract `vm-setup/lib/log.sh`)
 - Two sets of constants for gold image name and IP defaults + dead `CURRENT_GOLD_IP` — **fixed** in 21e7900 (extracted to vm-setup/lib/defaults.sh, GOLD_MAC→VM_MAC, GOLD_IP→VM_IP, CURRENT_GOLD_IP deleted, env-vs-flag dup at cmd_install dropped)
 - Stale name PHASE0_DIR — **fixed** in e6e7208
-- dc_set JSON-quoting helper duplicated — **fixed** (commit pending; extracted dc_init + dc_set to vm-setup/lib/dc-helpers.sh)
+- dc_set JSON-quoting helper duplicated — **fixed** in 4eddc46 (extracted dc_init + dc_set to vm-setup/lib/dc-helpers.sh)
 
 ### Style & convention drift (3 / 9 closed)
 
