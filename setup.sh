@@ -364,23 +364,23 @@ cmd_destroy() {
 # files for the per-hypervisor implementation. This file only orchestrates:
 # provision, start, run role-bootstrap-*.sh, wait for SSH/HTTP.
 
-# Wait for the lab guest's SSH to be both reachable AND stable.
+# Wait for the lab guest to be ready for role-bootstrap.
 #
-# Cold-boot from a fresh overlay can take 20+ min on a loaded host: kernel
-# is up in seconds, but sshd doesn't accept connections until well after the
-# desktop is reached (sysprep-style first-boot work, profile prep, IO settle).
-# A single OK probe is also unreliable — observed pattern is one OK followed
-# by 30+ s of failures before stable. So:
-#   - Each probe is bounded at PROBE_TIMEOUT_S (default 15s). Without this,
-#     a wedged sshd worker post-auth deadlocks the whole loop.
-#   - Need STABLE_OK_REQUIRED consecutive successful probes before declaring
-#     ready. Filters out the half-up flap.
-#   - Every DIAG_EVERY_S of waiting, emit one diagnostic line so the agent
-#     can see ping/port-22/virsh-state, not silent waiting.
-#   - Wall budget LAB_WAIT_SSH_MAX_S (default 1800s = 30 min) covers the
-#     observed cold-boot worst case with headroom.
+# Tries QEMU guest-agent first (the primary control plane post-2026-05-17 gold
+# rebuild). qga responds within seconds of the guest's PID-1 coming up — far
+# earlier than sshd accepts connections — and doesn't suffer the post-auth
+# OpenSSH worker wedge. On the qga path the function returns as soon as
+# qga says sshd is Running on the guest, which is what callers actually
+# need (role-bootstrap-*.sh's first step is an scp).
 #
-# All knobs overridable via env for tighter loops in tests / faster hosts.
+# On a legacy gold without qga in the channel, falls back to the SSH
+# stability pattern: 3 consecutive 15s-bounded probes filter the post-reboot
+# half-up flap, periodic diagnostic emits ping/port-22/vm-state so the
+# agent can act on slowness instead of staring at silence.
+#
+# 30-minute wall budget covers the observed cold-boot worst case on a
+# loaded host (~26 min target-first-boot, see /tmp/friction-log.md).
+# All knobs overridable via env for test loops / faster hosts.
 _lab_wait_ssh() {
     local ip="$1" label="$2"
     local probe_timeout_s="${PROBE_TIMEOUT_S:-15}"
@@ -388,35 +388,79 @@ _lab_wait_ssh() {
     local diag_every_s="${LAB_WAIT_SSH_DIAG_EVERY_S:-60}"
     local max_wall_s="${LAB_WAIT_SSH_MAX_S:-1800}"
 
-    log "Waiting for $label SSH at $ip (need ${stable_ok_required} OK in a row, max ${max_wall_s}s)"
+    local role
+    role="$([[ "$ip" == "$TARGET_IP" ]] && echo target || echo debugger)"
+    local domain
+    case "$role" in
+        target)   domain="$TARGET_NAME" ;;
+        debugger) domain="$DEBUGGER_NAME" ;;
+    esac
+
+    # Up-front qga feature-check. One short ping; failure = legacy gold,
+    # fall back to SSH for the rest of the wait. This avoids running BOTH
+    # transports every poll on a no-qga gold.
+    local transport=ssh
+    if [[ "$WINFORGE_BACKEND" == "kvm" ]] && [[ -n "$domain" ]] \
+       && python3 "$VM_SETUP/lib/qga.py" ping "$domain" 2>/dev/null; then
+        transport=qga
+    fi
+
+    log "Waiting for $label via $transport at $ip (max ${max_wall_s}s)"
 
     local consecutive_ok=0 elapsed=0 next_diag=$diag_every_s
     local last_fail="" ok_count=0 fail_count=0
+
     while (( elapsed < max_wall_s )); do
-        local rc=0
-        timeout "$probe_timeout_s" sshpass -p "$VM_PASS" ssh \
-            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            -o ConnectTimeout=3 -o LogLevel=ERROR \
-            "$VM_USER@$ip" 'echo ok' >/dev/null 2>&1 || rc=$?
-        if (( rc == 0 )); then
-            ok_count=$((ok_count + 1))
-            consecutive_ok=$((consecutive_ok + 1))
-            if (( consecutive_ok >= stable_ok_required )); then
-                ok "$label SSH stable at $ip (${ok_count} OK / ${fail_count} fail over ${elapsed}s)"
-                return 0
+        local rc=0 probe_out=""
+        if [[ "$transport" == "qga" ]]; then
+            # qga path: ping + confirm sshd Running. sshd needs to be up
+            # because role-bootstrap-*.sh will scp immediately.
+            probe_out=$(timeout "$probe_timeout_s" \
+                python3 "$VM_SETUP/lib/qga.py" exec "$domain" --timeout 8 -- \
+                powershell -NoProfile -Command \
+                "(Get-Service sshd -EA SilentlyContinue).Status" \
+                2>/dev/null) || rc=$?
+            if (( rc == 0 )) && [[ "$probe_out" == *Running* ]]; then
+                ok_count=$((ok_count + 1))
+                consecutive_ok=$((consecutive_ok + 1))
+            else
+                fail_count=$((fail_count + 1))
+                if (( rc == 124 )); then
+                    last_fail="qga probe timed out after ${probe_timeout_s}s"
+                elif (( rc != 0 )); then
+                    last_fail="qga rc=${rc}"
+                else
+                    last_fail="qga ok but sshd state='$(echo "$probe_out" | tr -d '\n\r' | head -c 80)'"
+                fi
+                consecutive_ok=0
             fi
         else
-            fail_count=$((fail_count + 1))
-            if (( rc == 124 )); then
-                last_fail="probe timed out after ${probe_timeout_s}s (sshd worker wedged)"
+            # SSH path (legacy).
+            timeout "$probe_timeout_s" sshpass -p "$VM_PASS" ssh \
+                -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                -o ConnectTimeout=3 -o LogLevel=ERROR \
+                "$VM_USER@$ip" 'echo ok' >/dev/null 2>&1 || rc=$?
+            if (( rc == 0 )); then
+                ok_count=$((ok_count + 1))
+                consecutive_ok=$((consecutive_ok + 1))
             else
-                last_fail="ssh rc=${rc}"
+                fail_count=$((fail_count + 1))
+                if (( rc == 124 )); then
+                    last_fail="ssh probe timed out after ${probe_timeout_s}s (sshd worker wedged)"
+                else
+                    last_fail="ssh rc=${rc}"
+                fi
+                consecutive_ok=0
             fi
-            consecutive_ok=0
+        fi
+
+        if (( consecutive_ok >= stable_ok_required )); then
+            ok "$label ready via $transport at $ip (${ok_count} OK / ${fail_count} fail over ${elapsed}s)"
+            return 0
         fi
 
         if (( elapsed >= next_diag )); then
-            _lab_wait_diag "$ip" "$label" "$elapsed" "$ok_count" "$fail_count" "$last_fail"
+            _lab_wait_diag "$ip" "$label" "$elapsed" "$ok_count" "$fail_count" "$last_fail" "$transport"
             next_diag=$((next_diag + diag_every_s))
         fi
 
@@ -424,18 +468,24 @@ _lab_wait_ssh() {
         elapsed=$((elapsed + 3))
     done
 
-    warn "$label SSH did not stabilise at $ip within ${max_wall_s}s (${ok_count} OK / ${fail_count} fail)"
-    _lab_wait_diag "$ip" "$label" "$elapsed" "$ok_count" "$fail_count" "${last_fail:-(none)}"
-    die "$label SSH never came up at $ip"
+    warn "$label did not stabilise via $transport at $ip within ${max_wall_s}s (${ok_count} OK / ${fail_count} fail)"
+    _lab_wait_diag "$ip" "$label" "$elapsed" "$ok_count" "$fail_count" "${last_fail:-(none)}" "$transport"
+    die "$label never came up at $ip"
 }
 
 # One-line diagnostic during/after a _lab_wait_ssh wait. Gives the agent
 # something to act on instead of silent timeout: is the VM running, does it
-# answer pings, is port 22 listening, what was the last ssh error.
+# answer pings, is port 22 listening, is qga reachable, what was the last
+# probe error.
 _lab_wait_diag() {
-    local ip="$1" label="$2" elapsed="$3" ok_count="$4" fail_count="$5" last_fail="$6"
-    local domstate ping_ms port22
-    domstate="$(vm_state "$([[ "$ip" == "$TARGET_IP" ]] && echo target || echo debugger)" 2>/dev/null || echo '?')"
+    local ip="$1" label="$2" elapsed="$3" ok_count="$4" fail_count="$5" last_fail="$6" transport="${7:-?}"
+    local role domain domstate ping_ms port22 qga_state
+    role="$([[ "$ip" == "$TARGET_IP" ]] && echo target || echo debugger)"
+    case "$role" in
+        target)   domain="$TARGET_NAME" ;;
+        debugger) domain="$DEBUGGER_NAME" ;;
+    esac
+    domstate="$(vm_state "$role" 2>/dev/null || echo '?')"
     if ping_ms=$(ping -c 1 -W 2 "$ip" 2>/dev/null | sed -n 's/.*time=\([0-9.]*\) ms.*/\1ms/p'); then
         ping_ms="${ping_ms:-no-reply}"
     else
@@ -446,7 +496,12 @@ _lab_wait_diag() {
     else
         port22="closed"
     fi
-    log "  $label t+${elapsed}s: vm=$domstate ping=$ping_ms port22=$port22 ok=$ok_count fail=$fail_count last='$last_fail'"
+    if [[ -n "$domain" ]] && python3 "$VM_SETUP/lib/qga.py" ping "$domain" 2>/dev/null; then
+        qga_state="up"
+    else
+        qga_state="down"
+    fi
+    log "  $label t+${elapsed}s ($transport): vm=$domstate qga=$qga_state ping=$ping_ms port22=$port22 ok=$ok_count fail=$fail_count last='$last_fail'"
 }
 
 cmd_lab() {
