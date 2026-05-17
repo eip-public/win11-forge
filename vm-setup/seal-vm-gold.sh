@@ -337,8 +337,17 @@ log "Flatten complete: $GOLD_PATH"
 ACTIVE_NVRAM="$(virsh dumpxml "$VM_NAME" 2>/dev/null | sed -n 's/.*<nvram[^>]*>\(.*\)<\/nvram>.*/\1/p' | head -1)"
 GOLD_NVRAM="$IMAGES_DIR/${VM_NAME}-gold-OVMF_VARS.fd"
 if [[ -n "$ACTIVE_NVRAM" && -f "$ACTIVE_NVRAM" ]]; then
-    cp -f "$ACTIVE_NVRAM" "$GOLD_NVRAM"
-    log "Stashed gold NVRAM: $GOLD_NVRAM"
+    # libvirt-managed NVRAM lives at /var/lib/libvirt/qemu/nvram/<vm>_VARS.fd
+    # mode 600 owned by libvirt-qemu:kvm — the invoking user can stat the file
+    # (so [[ -f ]] succeeds) but cannot read it. Need sudo to copy, then chown
+    # back so subsequent vm_provision passes (running as the invoking user) can
+    # read the stash without further escalation.
+    if sudo -n cp -f "$ACTIVE_NVRAM" "$GOLD_NVRAM" 2>/dev/null \
+       && sudo -n chown "$(id -u):$(id -g)" "$GOLD_NVRAM" 2>/dev/null; then
+        log "Stashed gold NVRAM: $GOLD_NVRAM"
+    else
+        log "Could not stash NVRAM (sudo unavailable?) — fresh overlays will fall back to the OVMF template"
+    fi
 else
     log "Could not locate active NVRAM (dumpxml/<nvram> empty); skipping stash"
 fi
