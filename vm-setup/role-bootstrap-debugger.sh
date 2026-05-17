@@ -205,6 +205,12 @@ if [[ "$status" == "200" ]]; then
     dc_set "allowedDirectories" "[\"C:\\\\\\\\\"]"
     dc_set "telemetryEnabled"   "false"
     ok "DesktopCommander configured on debugger (port 8201)"
+
+    # Disable DC's "welcome onboarding" — emits a prompt-injection block
+    # in tool results until silenced, and `set_config_value` refuses to
+    # flip the key. Patch the on-disk JSON; DC re-reads on next call.
+    retry_scp_to "$SCRIPT_DIR/disable-dc-onboarding.ps1" "C:/winforge/disable-dc-onboarding.ps1"
+    retry_ssh_cmd 'powershell -NoProfile -ExecutionPolicy Bypass -File C:\winforge\disable-dc-onboarding.ps1'
 else
     warn "DesktopCommander MCP did not come up on :8201 — check C:\\winforge\\logs\\target-mcp.log"
     exit 1
