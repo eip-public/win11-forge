@@ -163,6 +163,16 @@ vm_provision() {
     <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'/>
     <video><model type='virtio'/></video>
     <rng model='virtio'><backend model='random'>/dev/urandom</backend></rng>
+    <!-- QEMU guest agent control channel (virtio-serial). The gold image
+         installs the vioserial driver + QEMU-GA service; with this channel
+         the host can drive the guest via 'virsh qemu-agent-command' with
+         no network listener, no auth, surviving target network teardown.
+         A gold built before the qga phase landed won't have the guest
+         half — qga calls will fail with "QEMU guest agent is not
+         responding" and callers must fall back to SSH. -->
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+    </channel>
   </devices>
 </domain>
 XML
