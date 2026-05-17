@@ -121,6 +121,10 @@ verify_schtask_running() {
 # shellcheck source=lib/log.sh
 . "$SCRIPT_DIR/lib/log.sh"
 
+# shellcheck source=lib/guest.sh
+. "$SCRIPT_DIR/lib/guest.sh"
+guest_report_transport
+
 # With DHCP gold + MAC-based libvirt reservation, debugger arrives at $VM_IP
 # directly — no IP reassignment needed.
 echo "[*] Debugger IP: $VM_IP (DHCP MAC reservation)"
@@ -144,11 +148,16 @@ fi
 
 # ── Register + start DebuggerBoot scheduled task ────────────────────────
 echo "[*] Registering DebuggerBoot scheduled task"
-retry_ssh_cmd 'schtasks /Create /TN DebuggerBoot /TR "C:\\Python314\\python.exe C:\\winforge\\kd_wrapper.py" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null
+# guest_powershell prefers qga when available; for the legacy ssh path it
+# loses retry semantics retry_ssh_cmd had, but qga's primary path is more
+# reliable than ssh retry-after-wedge so the trade is in our favour.
+guest_powershell 'schtasks /Create /TN DebuggerBoot /TR "C:\Python314\python.exe C:\winforge\kd_wrapper.py" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null \
+  || retry_ssh_cmd 'schtasks /Create /TN DebuggerBoot /TR "C:\\Python314\\python.exe C:\\winforge\\kd_wrapper.py" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null
 ok "DebuggerBoot task registered"
 
 echo "[*] Starting DebuggerBoot now"
-retry_ssh_cmd 'schtasks /Run /TN DebuggerBoot' >/dev/null
+guest_powershell 'schtasks /Run /TN DebuggerBoot' >/dev/null \
+  || retry_ssh_cmd 'schtasks /Run /TN DebuggerBoot' >/dev/null
 verify_schtask_running DebuggerBoot
 
 # Give the wrapper time to start kd.exe and attempt the KDNET connection.
@@ -175,11 +184,13 @@ else
 fi
 
 echo "[*] Registering DebuggerDesktopBoot scheduled task (port 8201)"
-retry_ssh_cmd 'schtasks /Create /TN DebuggerDesktopBoot /TR "C:\\Python314\\python.exe C:\\winforge\\target_mcp_http.py --port 8201" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null
+guest_powershell 'schtasks /Create /TN DebuggerDesktopBoot /TR "C:\Python314\python.exe C:\winforge\target_mcp_http.py --port 8201" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null \
+  || retry_ssh_cmd 'schtasks /Create /TN DebuggerDesktopBoot /TR "C:\\Python314\\python.exe C:\\winforge\\target_mcp_http.py --port 8201" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null
 ok "DebuggerDesktopBoot task registered"
 
 echo "[*] Starting DebuggerDesktopBoot now"
-retry_ssh_cmd 'schtasks /Run /TN DebuggerDesktopBoot' >/dev/null
+guest_powershell 'schtasks /Run /TN DebuggerDesktopBoot' >/dev/null \
+  || retry_ssh_cmd 'schtasks /Run /TN DebuggerDesktopBoot' >/dev/null
 verify_schtask_running DebuggerDesktopBoot
 
 # Wait for HTTP up then configure via API

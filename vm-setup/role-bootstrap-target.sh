@@ -39,6 +39,10 @@ scp_to() {
         "$1" "$VM_USER@$VM_IP:$2"
 }
 
+# shellcheck source=lib/guest.sh
+. "$SCRIPT_DIR/lib/guest.sh"
+guest_report_transport
+
 # Wait for SSH to be both reachable AND stable.
 #
 # Used post-bcdedit-reboot when sshd briefly accepts a connection, then
@@ -112,16 +116,15 @@ KDNET_PORT="${KDNET_PORT:-50000}"
 KDNET_KEY="${KDNET_KEY:-1.2.3.4}"
 
 echo "[*] Configuring KDNET on target $VM_IP (debugger=$KDNET_HOST:$KDNET_PORT key=$KDNET_KEY)"
-ssh_cmd "cmd /c \"bcdedit /debug on && bcdedit /dbgsettings net hostip:$KDNET_HOST port:$KDNET_PORT key:$KDNET_KEY && bcdedit /set testsigning on\""
+guest_powershell "bcdedit /debug on; bcdedit /dbgsettings net hostip:$KDNET_HOST port:$KDNET_PORT key:$KDNET_KEY; bcdedit /set testsigning on"
 
 # Auto-reboot on BSOD: the supervisor loop restarts kd.exe after each crash,
 # and auto-reboot means the target recovers without manual virsh intervention.
 echo "[*] Enabling auto-reboot on BSOD + kernel mini-dump"
-ssh_cmd 'reg add "HKLM\SYSTEM\CurrentControlSet\Control\CrashControl" /v AutoReboot /t REG_DWORD /d 1 /f' >/dev/null
-ssh_cmd 'reg add "HKLM\SYSTEM\CurrentControlSet\Control\CrashControl" /v CrashDumpEnabled /t REG_DWORD /d 2 /f' >/dev/null
+guest_powershell 'reg add "HKLM\SYSTEM\CurrentControlSet\Control\CrashControl" /v AutoReboot /t REG_DWORD /d 1 /f | Out-Null; reg add "HKLM\SYSTEM\CurrentControlSet\Control\CrashControl" /v CrashDumpEnabled /t REG_DWORD /d 2 /f | Out-Null'
 
 echo "[*] Rebooting target"
-ssh_cmd 'shutdown /r /t 3 /f' >/dev/null 2>&1 || true
+guest_powershell 'shutdown /r /t 3 /f' >/dev/null 2>&1 || true
 
 sleep 10
 wait_for_ssh "target back up after reboot"
@@ -144,11 +147,11 @@ echo "[*] Deploying DesktopCommander HTTP relay"
 scp_to "$SCRIPT_DIR/target_mcp_http.py" "C:/winforge/target_mcp_http.py"
 
 echo "[*] Registering TargetDesktopBoot scheduled task"
-ssh_cmd 'schtasks /Create /TN TargetDesktopBoot /TR "C:\\Python314\\python.exe C:\\winforge\\target_mcp_http.py" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null
+guest_powershell 'schtasks /Create /TN TargetDesktopBoot /TR "C:\Python314\python.exe C:\winforge\target_mcp_http.py" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null
 echo "[+] TargetDesktopBoot registered"
 
 echo "[*] Starting TargetDesktopBoot"
-ssh_cmd 'schtasks /Run /TN TargetDesktopBoot' >/dev/null
+guest_powershell 'schtasks /Run /TN TargetDesktopBoot' >/dev/null
 verify_schtask_running TargetDesktopBoot
 
 # Wait for HTTP endpoint to be reachable
@@ -237,11 +240,11 @@ echo "[*] Registering TargetMcpWindbgBoot scheduled task"
 # schtasks /TR takes a single command-line string. The binary path has no
 # spaces so we don't need inner \"...\" quoting (that escape confuses schtasks
 # — see the TargetDesktopBoot task above for the canonical single-quoted form).
-ssh_cmd 'schtasks /Create /TN TargetMcpWindbgBoot /TR "C:\\Python314\\Scripts\\mcp-windbg.exe --transport streamable-http --host 0.0.0.0 --port 8300" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null
+guest_powershell 'schtasks /Create /TN TargetMcpWindbgBoot /TR "C:\Python314\Scripts\mcp-windbg.exe --transport streamable-http --host 0.0.0.0 --port 8300" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null
 echo "[+] TargetMcpWindbgBoot registered"
 
 echo "[*] Starting TargetMcpWindbgBoot"
-ssh_cmd 'schtasks /Run /TN TargetMcpWindbgBoot' >/dev/null
+guest_powershell 'schtasks /Run /TN TargetMcpWindbgBoot' >/dev/null
 verify_schtask_running TargetMcpWindbgBoot
 
 echo "[*] Waiting for mcp-windbg on :8300..."
