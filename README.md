@@ -283,6 +283,16 @@ win11-forge/
 │   ├── qcow2-to-vmware.sh    # gold.qcow2 → gold.vmdk for the VMware backend
 │   ├── fetch-isos.sh         # standalone: stage Win11 LTSC + virtio-win ISOs
 │   ├── fetch-windev-vhd.sh   # standalone: download Microsoft's Win11 dev .vhdx
+│   ├── lib/                  # shared helpers sourced by sibling scripts
+│   │   ├── defaults.sh       # VM_USER/VM_PASS/VM_IP/VM_MAC default constants
+│   │   ├── macs.env          # single source of truth for VM MAC addresses
+│   │   ├── log.sh            # ok/warn/die status helpers
+│   │   ├── ssh-helpers.sh    # shared SSH option array
+│   │   ├── virsh-helpers.sh  # virsh_or_warn wrapper
+│   │   ├── dc-helpers.sh     # DesktopCommander MCP config helpers
+│   │   └── set-disk-source.py# libvirt XML disk-source rewrite
+│   ├── setup-vm-phases/      # gold-build PowerShell phases launched detached via
+│   │                         # launch.ps1 + runner.ps1 (avoids Windows OpenSSH stdout wedge)
 │   ├── backend/              # KVM- vs VMware-backend dispatch helpers (kvm.sh, vmware.sh)
 │   └── third-party/
 │       └── mcp-windbg/       # vendored svnscha/mcp-windbg fork (user-mode :8300)
@@ -292,12 +302,15 @@ win11-forge/
 │   ├── SetupComplete.cmd
 │   ├── install-winforge-bootstrap.ps1
 │   └── winforge-bootstrap.ps1
-├── vm-images/                # ISOs + generated qcow2s (gitignored)
+├── vm-images/                # ISOs + generated qcow2s + NVRAM (gitignored)
 │   ├── win11-ltsc-24h2.iso
 │   ├── virtio-win.iso
 │   ├── winforge-win11-24h2-gold.qcow2
+│   ├── winforge-win11-24h2-gold-OVMF_VARS.fd  # populated NVRAM stash (seal-vm-gold.sh)
 │   ├── winforge-target.qcow2         (lab spawn only)
-│   └── winforge-debugger.qcow2       (lab spawn only)
+│   ├── winforge-target-OVMF_VARS.fd  (lab spawn only — cloned from gold stash)
+│   ├── winforge-debugger.qcow2       (lab spawn only)
+│   └── winforge-debugger-OVMF_VARS.fd (lab spawn only — cloned from gold stash)
 ├── vm-ssh-key[.pub]          # generated on first install run
 └── skills/                   # CVE pipeline stage documentation
     ├── patch-intel/          # stage 1: CVE triage
