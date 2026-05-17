@@ -259,31 +259,16 @@ else
   # UEFI takes a few seconds before showing "Press any key to boot from CD".
   # Send keys aggressively over a longer window to catch it.
 
-  # Fire-and-forget keypress loop targeting OVMF's "Press any key to boot
-  # from CD-ROM" prompt. The prompt has a finite display window (seconds)
-  # but the time-to-prompt varies wildly with host load — observed range
-  # is ~5s on an idle host to ~60s under load:4+. A short window misses
-  # the prompt entirely and OVMF drops into the BIOS menu, hanging the
-  # install.
+  # No CD-boot keypress needed: the ISO has been repacked at
+  # cmd_install time to use Microsoft's `cdboot_noprompt.efi` +
+  # `efisys_noprompt.bin` boot blobs, which skip the "Press any key to
+  # boot from CD or DVD" gate entirely. See vm-setup/repack-iso-noprompt.sh.
   #
-  # Wait long enough to cover slow firmware init (90s), keep the gap
-  # generous enough that UEFI processes each key (1s — half-second
-  # spamming was observed to be sometimes ignored under load), and exit
-  # early as soon as we detect Windows is writing to the qcow2 (the
-  # install.wim extraction makes the file grow past 100 MB, which the
-  # press-any-key screen never triggers).
-  echo "[*] Sending keypresses for CD boot (up to 90s; early-exit on disk growth)..."
-  sleep 2
-  baseline_size=$(stat -c%s "$QCOW2" 2>/dev/null || echo 0)
-  for i in $(seq 1 90); do
-    virsh send-key "$VM_NAME" KEY_ENTER 2>/dev/null || true
-    cur_size=$(stat -c%s "$QCOW2" 2>/dev/null || echo 0)
-    if (( cur_size > baseline_size + 100 * 1024 * 1024 )); then
-      echo "[+] qcow2 grew by $(( (cur_size - baseline_size) / 1024 / 1024 )) MiB — past the boot prompt"
-      break
-    fi
-    sleep 1
-  done
+  # The previous keypress loop was unsafe under load: a too-short window
+  # (15s) missed the prompt entirely and dropped into the BIOS menu; a
+  # too-long window (90s) sent Enters into the Windows installer UI
+  # after the prompt had cleared, hitting the Cancel button and tripping
+  # the "Are you sure you want to quit?" dialog.
 
   # ── Monitor install ────────────────────────────────────────────────
 
