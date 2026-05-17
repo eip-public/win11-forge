@@ -14,6 +14,10 @@ win11-forge/
 ├── unattend-iso/        Windows unattended installer payload (cmd, PowerShell)
 ├── vm-setup/            in-VM setup + lab-host helpers (bash, Python, PowerShell)
 │   ├── backend/         KVM/libvirt vs VMware backend dispatch
+│   ├── lib/             shared helpers sourced by sibling scripts
+│   │                    (ssh/log/virsh/dc options, MACs, defaults, set-disk-source.py)
+│   ├── setup-vm-phases/ gold-build PowerShell phase scripts; launched detached
+│   │                    via launch.ps1 + runner.ps1 (avoids Windows OpenSSH wedge)
 │   ├── third-party/     vendored upstreams (mcp-windbg etc.)
 │   └── *.py / *.ps1     kd_wrapper, target/debugger MCP HTTP shims, ...
 ├── skills/              eight-stage pipeline skill set (SKILL.md per stage)
@@ -29,8 +33,12 @@ win11-forge/
 2. Keep KVM/libvirt and VMware paths in sync. The `lab` subcommands branch
    on `WINFORGE_BACKEND`; if you add an option to one backend, add the
    equivalent (or an explicit "not supported here") to the other.
-3. Anything that listens should bind a 50000+ port on `127.0.0.1` or the
-   lab subnet — match the existing MCP-endpoint convention.
+3. Anything that listens follows the existing port convention: MCP HTTP
+   endpoints occupy `:8100/:8200/:8201/:8300` on the lab subnet (target
+   `.100`, debugger `.101`); KDNET runs over UDP `:50000`. Pick the next
+   free `:84xx` for a new MCP rather than shifting an existing port.
+   Bind `0.0.0.0` inside the guest (the libvirt/VMware default network
+   is private; see `SECURITY.md`).
 4. If the change touches a guest-side payload, regenerate the gold image
    with `./setup.sh install` and confirm the lab still spawns clean.
 5. Run the relevant bats suite (see *Tests* below).
