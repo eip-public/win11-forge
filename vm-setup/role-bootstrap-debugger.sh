@@ -56,14 +56,34 @@ retry_scp_to() {
     return 1
 }
 
+# Wait for SSH to be both reachable AND stable. See the matching helper
+# in role-bootstrap-target.sh for the rationale: a single-OK probe slips
+# through the post-reboot half-up flap, the next scp/ssh then hangs.
+#   - bounded per-probe timeout (15 s),
+#   - need 3 consecutive OK probes before declaring stable,
+#   - 30 min wall budget covers cold-boot worst case.
 wait_for_ssh() {
     local label="${1:-SSH}"
-    printf '[*] Waiting for %s...' "$label"
-    if retry_ssh_cmd 'echo ok' >/dev/null 2>&1; then
-        printf ' ready\n'
-        return 0
-    fi
-    printf ' timed out\n' >&2
+    local probe_timeout_s="${PROBE_TIMEOUT_S:-15}"
+    local stable_ok_required="${WAIT_FOR_SSH_STABLE_OK:-3}"
+    local max_wall_s="${WAIT_FOR_SSH_MAX_S:-1800}"
+    local consecutive_ok=0 elapsed=0 ok_count=0 fail_count=0
+    while (( elapsed < max_wall_s )); do
+        if timeout "$probe_timeout_s" ssh_cmd 'echo ok' >/dev/null 2>&1; then
+            ok_count=$((ok_count + 1))
+            consecutive_ok=$((consecutive_ok + 1))
+            if (( consecutive_ok >= stable_ok_required )); then
+                echo "[+] $label ready (${ok_count} OK / ${fail_count} fail over ${elapsed}s)"
+                return 0
+            fi
+        else
+            fail_count=$((fail_count + 1))
+            consecutive_ok=0
+        fi
+        sleep 3
+        elapsed=$((elapsed + 3))
+    done
+    echo "[-] $label timed out (ssh never stabilised in ${max_wall_s}s, ${ok_count} OK / ${fail_count} fail)" >&2
     return 1
 }
 
