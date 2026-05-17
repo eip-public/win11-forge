@@ -50,6 +50,7 @@ lab/**/.venv/
 lab/**/bin-*/
 lab/**/bins/
 lab/**/__pycache__/
+vm-setup/**/__pycache__/
 lab/**/candidates.json
 
 # in-session scratch — regenerable probes, not deliverables
