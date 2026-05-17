@@ -259,15 +259,30 @@ else
   # UEFI takes a few seconds before showing "Press any key to boot from CD".
   # Send keys aggressively over a longer window to catch it.
 
-  echo "[*] Sending keypress for CD boot..."
+  # Fire-and-forget keypress loop targeting OVMF's "Press any key to boot
+  # from CD-ROM" prompt. The prompt has a finite display window (seconds)
+  # but the time-to-prompt varies wildly with host load — observed range
+  # is ~5s on an idle host to ~60s under load:4+. A short window misses
+  # the prompt entirely and OVMF drops into the BIOS menu, hanging the
+  # install.
+  #
+  # Wait long enough to cover slow firmware init (90s), keep the gap
+  # generous enough that UEFI processes each key (1s — half-second
+  # spamming was observed to be sometimes ignored under load), and exit
+  # early as soon as we detect Windows is writing to the qcow2 (the
+  # install.wim extraction makes the file grow past 100 MB, which the
+  # press-any-key screen never triggers).
+  echo "[*] Sending keypresses for CD boot (up to 90s; early-exit on disk growth)..."
   sleep 2
-  # Fire-and-forget keypress loop until the boot prompt clears. Many of these
-  # will fail in benign ways (VM not yet accepting input, boot already advanced
-  # past the prompt) — keep raw `|| true` rather than virsh_or_warn so the
-  # 30-iteration spam stays silent.
-  for i in $(seq 1 30); do
+  baseline_size=$(stat -c%s "$QCOW2" 2>/dev/null || echo 0)
+  for i in $(seq 1 90); do
     virsh send-key "$VM_NAME" KEY_ENTER 2>/dev/null || true
-    sleep 0.5
+    cur_size=$(stat -c%s "$QCOW2" 2>/dev/null || echo 0)
+    if (( cur_size > baseline_size + 100 * 1024 * 1024 )); then
+      echo "[+] qcow2 grew by $(( (cur_size - baseline_size) / 1024 / 1024 )) MiB — past the boot prompt"
+      break
+    fi
+    sleep 1
   done
 
   # ── Monitor install ────────────────────────────────────────────────
