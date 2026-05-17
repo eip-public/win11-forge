@@ -182,6 +182,12 @@ else
     # Disable telemetry
     dc_set "telemetryEnabled"   "false"
     echo "[+] DesktopCommander configured (blockedCommands cleared, C:\\ allowed, telemetry off)"
+
+    # Disable DC's "welcome onboarding" — emits a prompt-injection block
+    # in tool results until silenced, and `set_config_value` refuses to
+    # flip the key. Patch the on-disk JSON; DC re-reads on next call.
+    scp_to "$SCRIPT_DIR/disable-dc-onboarding.ps1" "C:/winforge/disable-dc-onboarding.ps1"
+    ssh_cmd 'powershell -NoProfile -ExecutionPolicy Bypass -File C:\winforge\disable-dc-onboarding.ps1'
 fi
 
 # ── mcp-windbg HTTP (user-mode debugger MCP on :8300) ─────────────
