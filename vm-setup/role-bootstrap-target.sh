@@ -39,13 +39,38 @@ scp_to() {
         "$1" "$VM_USER@$VM_IP:$2"
 }
 
+# Wait for SSH to be both reachable AND stable.
+#
+# Used post-bcdedit-reboot when sshd briefly accepts a connection, then
+# fails for tens of seconds (the same "half-up flap" the lab _lab_wait_ssh
+# guards against). A single-OK probe used to slip through that window, the
+# next scp/ssh then hung. Match the setup.sh _lab_wait_ssh pattern:
+#   - bounded per-probe timeout (15 s) — wedged sshd worker becomes a
+#     fast failure signal, not a deadlock,
+#   - need 3 consecutive OK probes before declaring stable,
+#   - 30 min wall budget covers the worst observed cold-boot.
 wait_for_ssh() {
-    local label="$1" i
-    for i in $(seq 1 60); do
-        ssh_cmd 'echo ok' >/dev/null 2>&1 && { echo "[+] $label"; return 0; }
-        sleep 5
+    local label="$1"
+    local probe_timeout_s="${PROBE_TIMEOUT_S:-15}"
+    local stable_ok_required="${WAIT_FOR_SSH_STABLE_OK:-3}"
+    local max_wall_s="${WAIT_FOR_SSH_MAX_S:-1800}"
+    local consecutive_ok=0 elapsed=0 ok_count=0 fail_count=0
+    while (( elapsed < max_wall_s )); do
+        if timeout "$probe_timeout_s" ssh_cmd 'echo ok' >/dev/null 2>&1; then
+            ok_count=$((ok_count + 1))
+            consecutive_ok=$((consecutive_ok + 1))
+            if (( consecutive_ok >= stable_ok_required )); then
+                echo "[+] $label (${ok_count} OK / ${fail_count} fail over ${elapsed}s)"
+                return 0
+            fi
+        else
+            fail_count=$((fail_count + 1))
+            consecutive_ok=0
+        fi
+        sleep 3
+        elapsed=$((elapsed + 3))
     done
-    echo "[-] ${label}: ssh never came back" >&2
+    echo "[-] ${label}: ssh never stabilised in ${max_wall_s}s (${ok_count} OK / ${fail_count} fail)" >&2
     return 1
 }
 
