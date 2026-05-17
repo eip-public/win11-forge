@@ -68,8 +68,14 @@ wait_for_ssh() {
     local stable_ok_required="${WAIT_FOR_SSH_STABLE_OK:-3}"
     local max_wall_s="${WAIT_FOR_SSH_MAX_S:-1800}"
     local consecutive_ok=0 elapsed=0 ok_count=0 fail_count=0
+    # `timeout` runs an executable, not a shell function — invoke ssh
+    # directly so the timeout actually applies (using ssh_cmd here would
+    # silently fail with rc=127 every iteration).
     while (( elapsed < max_wall_s )); do
-        if timeout "$probe_timeout_s" ssh_cmd 'echo ok' >/dev/null 2>&1; then
+        if timeout "$probe_timeout_s" \
+            ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" \
+                -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
+                "$VM_USER@$VM_IP" 'echo ok' >/dev/null 2>&1; then
             ok_count=$((ok_count + 1))
             consecutive_ok=$((consecutive_ok + 1))
             if (( consecutive_ok >= stable_ok_required )); then
