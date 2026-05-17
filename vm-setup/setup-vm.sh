@@ -490,6 +490,54 @@ else
   echo "[!] target_mcp_http.py missing — TargetDesktopBoot will fail"
 fi
 
+# ── QEMU guest agent + vioserial driver ───────────────────────────
+# Installs the virtio-serial PCI driver and the QEMU Guest Agent service.
+# Once a guest has both, the libvirt host can issue `virsh qemu-agent-command`
+# directly — no network listener, no firewall, no SSH worker to wedge. The
+# lab uses this as its primary control plane (SSH stays as a fallback for
+# bulk file transfer where qga's base64-encoded guest-file-* is slow).
+#
+# Files come from vm-images/virtio-win.iso, extracted host-side here and
+# scp'd to a staging dir on the guest. The phase script then runs pnputil +
+# msiexec from that staging dir.
+QGA_VERIFY='$svc = Get-Service QEMU-GA -EA SilentlyContinue; if ($svc -and $svc.StartType -eq "Automatic") { Write-Output OK }'
+if phase_satisfied "qga" "$QGA_VERIFY"; then
+  echo "[=] Skipping QEMU guest agent (already satisfied)"
+  mark_phase_done "qga"
+else
+  echo "[*] Staging virtio-win files for qga install"
+  VIRTIO_ISO="$REPO_ROOT/vm-images/virtio-win.iso"
+  [[ -f "$VIRTIO_ISO" ]] || { echo "[-] $VIRTIO_ISO missing — re-run install-deps.sh" >&2; exit 1; }
+  VIRTIO_MNT="$(mktemp -d)"
+  if ! sudo -n mount -o loop,ro "$VIRTIO_ISO" "$VIRTIO_MNT" 2>/dev/null; then
+    echo "[-] could not mount $VIRTIO_ISO — needs passwordless sudo to mount loop ISOs" >&2
+    rmdir "$VIRTIO_MNT"
+    exit 1
+  fi
+  VIRTIO_STAGE="$(mktemp -d)"
+  cp "$VIRTIO_MNT/vioserial/w11/amd64/vioser.inf"        "$VIRTIO_STAGE/"
+  cp "$VIRTIO_MNT/vioserial/w11/amd64/vioser.cat"        "$VIRTIO_STAGE/"
+  cp "$VIRTIO_MNT/vioserial/w11/amd64/vioser.sys"        "$VIRTIO_STAGE/"
+  cp "$VIRTIO_MNT/guest-agent/qemu-ga-x86_64.msi"        "$VIRTIO_STAGE/"
+  sudo -n umount "$VIRTIO_MNT"
+  rmdir "$VIRTIO_MNT"
+
+  ssh_cmd 'powershell -NoProfile -Command "New-Item -ItemType Directory -Path C:\winforge\virtio-stage -Force | Out-Null"' >/dev/null
+  for f in "$VIRTIO_STAGE"/*; do
+    scp_to "$f" "C:/winforge/virtio-stage/$(basename "$f")" >/dev/null
+  done
+  rm -rf "$VIRTIO_STAGE"
+
+  echo "[*] Installing vioserial driver + QEMU guest agent"
+  upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/install_qga.ps1")" "install_qga.ps1"
+  if phase_satisfied "qga" "$QGA_VERIFY"; then
+    mark_phase_done "qga"
+  else
+    echo "[-] QEMU guest agent did not satisfy verification after install" >&2
+    exit 1
+  fi
+fi
+
 # ── Verify installation ───────────────────────────────────────────
 
 echo ""
