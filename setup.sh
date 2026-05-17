@@ -712,14 +712,20 @@ _lab_spawn() {
     _lab_wait_ssh "$TARGET_IP" "target"
 
     log "Configuring target role (KDNET bcdedit, debugger=$DEBUGGER_IP)"
-    "$VM_SETUP/role-bootstrap-target.sh" "$TARGET_IP" "$SSH_KEY" "$DEBUGGER_IP"
+    # WINFORGE_QGA_DOMAIN is consumed by role-bootstrap-target.sh's
+    # guest_select_transport: when set + reachable, short commands run
+    # over the QEMU guest agent instead of SSH (no wedge risk). Empty
+    # on VMware (or any backend without virsh qemu-agent-command).
+    WINFORGE_QGA_DOMAIN="$([[ "$WINFORGE_BACKEND" == "kvm" ]] && echo "$TARGET_NAME")" \
+        "$VM_SETUP/role-bootstrap-target.sh" "$TARGET_IP" "$SSH_KEY" "$DEBUGGER_IP"
 
     log "Starting debugger ($gui_mode)"
     vm_start debugger "$gui_mode"
     _lab_wait_ssh "$DEBUGGER_IP" "debugger"
 
     log "Configuring debugger role (kd.exe KDNET, MCP HTTP)"
-    "$VM_SETUP/role-bootstrap-debugger.sh" "$DEBUGGER_IP" "$SSH_KEY"
+    WINFORGE_QGA_DOMAIN="$([[ "$WINFORGE_BACKEND" == "kvm" ]] && echo "$DEBUGGER_NAME")" \
+        "$VM_SETUP/role-bootstrap-debugger.sh" "$DEBUGGER_IP" "$SSH_KEY"
 
     ok "Lab VMs up. Immediate MCP endpoints are live; :8100 comes up after first break (lab load-mcp)."
     printf '  target   : ssh -i %s %s@%s\n' "$SSH_KEY" "$VM_USER" "$TARGET_IP"
