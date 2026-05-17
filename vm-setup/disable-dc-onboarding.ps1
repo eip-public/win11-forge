@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 # DC (@wonderwhy-er/desktop-commander) emits a `[SYSTEM INSTRUCTION]: NEW
 # USER ONBOARDING REQUIRED` block as part of normal tool results until the
 # `pendingWelcomeOnboarding` flag is false. That block instructs the AI to
-# render a menu verbatim and call `get_prompts` with specific IDs — a real
+# render a menu verbatim and call `get_prompts` with specific IDs -- a real
 # prompt-injection vector for any agent driving the lab.
 #
 # `set_config_value` deliberately refuses to flip `pendingWelcomeOnboarding`
@@ -14,11 +14,11 @@ $ErrorActionPreference = 'Stop'
 # instead. DC re-reads its config on each tool call, so the next response
 # from the same MCP session is clean.
 #
-# Idempotent — running on an already-disabled config is a no-op.
+# Idempotent -- running on an already-disabled config is a no-op.
 
 $cfg = "C:\Windows\System32\config\systemprofile\.claude-server-commander\config.json"
 if (-not (Test-Path $cfg)) {
-    Write-Host "[!] DC config not found at $cfg — has DC ever run?"
+    Write-Host "[!] DC config not found at $cfg -- has DC ever run?"
     exit 0
 }
 
