@@ -80,6 +80,7 @@ esac
 source "$VM_SETUP/backend/$WINFORGE_BACKEND.sh"
 
 WIN_ISO_NAME="win11-ltsc-24h2.iso"
+WIN_ISO_NOPROMPT_NAME="win11-ltsc-24h2-noprompt.iso"
 VIRTIO_ISO_NAME="virtio-win.iso"
 
 # ── logging ────────────────────────────────────────────────────────
@@ -243,9 +244,19 @@ cmd_install() {
     stage_isos
     ensure_ssh_key
 
+    # Repack the source ISO into a no-prompt variant so OVMF boots
+    # Windows Setup without the "Press any key to boot from CD or DVD"
+    # gate. Idempotent — skips if the repacked ISO is newer than the
+    # source. See vm-setup/repack-iso-noprompt.sh for the rationale and
+    # the techniques tried before settling on this one.
+    log "Repacking ISO to no-prompt variant ($WIN_ISO_NOPROMPT_NAME)"
+    "$VM_SETUP/repack-iso-noprompt.sh" \
+        "$IMAGES_DIR/$WIN_ISO_NAME" \
+        "$IMAGES_DIR/$WIN_ISO_NOPROMPT_NAME"
+
     log "Running create-vm.sh ($VM_NAME, ${VM_RAM}MB, $VM_CPUS vCPU, $DISK_SIZE disk)"
     "$VM_SETUP/create-vm.sh" \
-        --iso "$IMAGES_DIR/$WIN_ISO_NAME" \
+        --iso "$IMAGES_DIR/$WIN_ISO_NOPROMPT_NAME" \
         --name "$VM_NAME" \
         --mac "$VM_MAC" \
         --ram "$VM_RAM" \
