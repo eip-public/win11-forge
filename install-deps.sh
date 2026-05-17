@@ -174,6 +174,53 @@ install_binexport_plugin() {
     fi
 }
 
+# Configure libvirt's default network with explicit DNS forwarders.
+#
+# Why: libvirt's stock 'default' network has no <dns><forwarder/></dns>,
+# so dnsmasq inherits the host's /etc/resolv.conf. On Ubuntu / Fedora
+# with systemd-resolved that file points at the 127.0.0.53 stub, which
+# is unreachable from inside the guest. Symptom inside the guest:
+#   nslookup community.chocolatey.org -> "DNS request timed out"
+# Result: the gold-build's Chocolatey download dies before installing
+# anything. Observed on 2026-05-17; the previous gold survived only
+# because a manual fix had been applied to the running target VM.
+#
+# Fix: add 1.1.1.1 + 8.8.8.8 forwarders so the lab subnet's DNS does
+# not depend on the host's systemd-resolved configuration. Idempotent.
+ensure_libvirt_dns_forwarders() {
+    ${SUDO[@]} virsh net-info default >/dev/null 2>&1 || return 0
+    if ${SUDO[@]} virsh net-dumpxml default | grep -q '<forwarder addr='; then
+        ok "libvirt default network already has DNS forwarders"
+        return 0
+    fi
+    log "Adding DNS forwarders (1.1.1.1, 8.8.8.8) to libvirt default network"
+    local xml; xml="$(mktemp)"
+    ${SUDO[@]} virsh net-dumpxml default > "$xml"
+    python3 - "$xml" <<'PY'
+import sys, xml.etree.ElementTree as ET
+path = sys.argv[1]
+tree = ET.parse(path); root = tree.getroot()
+if root.find('dns') is None:
+    dns = ET.Element('dns')
+    for addr in ('1.1.1.1', '8.8.8.8'):
+        ET.SubElement(dns, 'forwarder', {'addr': addr})
+    # Insert before the first <ip> so the resulting XML stays canonical.
+    for i, child in enumerate(list(root)):
+        if child.tag == 'ip':
+            root.insert(i, dns); break
+    tree.write(path)
+PY
+    # net-update can't manage <dns>; destroy+define+start is the
+    # supported way to swap in a structural change. Domains using the
+    # network stay defined; only running guests on the bridge see a
+    # momentary blip.
+    ${SUDO[@]} virsh net-destroy default >/dev/null 2>&1 || true
+    ${SUDO[@]} virsh net-define "$xml" >/dev/null
+    ${SUDO[@]} virsh net-start default >/dev/null
+    rm -f "$xml"
+    ok "libvirt default network restarted with DNS forwarders"
+}
+
 check_mode() {
     local fail=0
 
@@ -301,6 +348,8 @@ install_mode() {
     if [[ "$(${SUDO[@]} virsh net-info default 2>/dev/null | awk '/^Active:/ {print $2}')" != "yes" ]]; then
         ${SUDO[@]} virsh net-start default || warn "could not start default network"
     fi
+
+    ensure_libvirt_dns_forwarders
 
     ok "Dependencies installed"
     if [[ ${#groups_added[@]} -gt 0 ]]; then
