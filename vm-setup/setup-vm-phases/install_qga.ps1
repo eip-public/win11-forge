@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 #
 # The device file (\\.\Global\org.qemu.guest_agent.0) is created at boot,
 # not on service start, so this phase exits with the service merely
-# "Running" — full guest-ping reachability is validated post-reboot by
+# "Running" -- full guest-ping reachability is validated post-reboot by
 # seal-vm-gold.sh's verify pass (or by the lab spawn that boots the
 # overlay).
 
@@ -18,8 +18,8 @@ $stage = "C:\winforge\virtio-stage"
 $vioSerInf = Join-Path $stage "vioser.inf"
 $qgaMsi    = Join-Path $stage "qemu-ga-x86_64.msi"
 
-if (-not (Test-Path $vioSerInf)) { throw "missing $vioSerInf — setup-vm.sh should have scp'd it" }
-if (-not (Test-Path $qgaMsi))    { throw "missing $qgaMsi — setup-vm.sh should have scp'd it" }
+if (-not (Test-Path $vioSerInf)) { throw "missing $vioSerInf -- setup-vm.sh should have scp'd it" }
+if (-not (Test-Path $qgaMsi))    { throw "missing $qgaMsi -- setup-vm.sh should have scp'd it" }
 
 # vioserial driver (idempotent: pnputil dedupes on identical .inf).
 # The PCI device exists from QEMU's virtio-serial-pci device but the
@@ -39,11 +39,11 @@ if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {  # 3010 = success, reboot req
 }
 
 # Confirm the service object exists. (Running state isn't guaranteed yet
-# — the device file may not exist until next boot. --retry-path in the
+# -- the device file may not exist until next boot. --retry-path in the
 # service args handles that.)
 $svc = Get-Service QEMU-GA -EA SilentlyContinue
 if (-not $svc) {
-    throw "QEMU-GA service not registered after MSI install — check %TEMP%\MSI*.log"
+    throw "QEMU-GA service not registered after MSI install -- check %TEMP%\MSI*.log"
 }
 Set-Service QEMU-GA -StartupType Automatic
 Write-Host "[+] QEMU-GA service registered, startup=Automatic, current=$($svc.Status)"
