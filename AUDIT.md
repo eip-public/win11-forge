@@ -540,7 +540,7 @@ System.Net.WebClient).DownloadString(...))` for chocolatey
 
 ## Status tracker
 
-Last updated: 2026-05-13.
+Last updated: 2026-05-17.
 
 Legend:
 - **fixed** — landed in commit; lab-validated.
