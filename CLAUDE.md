@@ -63,6 +63,16 @@ vm-setup/                       guest-side install + lab-host helpers
                                 free Windows 11 dev .vhdx (HyperV
                                 variant); resolves the aka.ms redirect
   backend/                      KVM-vs-VMware dispatch helpers
+  lib/                          shared helpers sourced by the other
+                                scripts (ssh-helpers, log, virsh-helpers,
+                                dc-helpers, macs.env, defaults.sh,
+                                set-disk-source.py). One source of truth
+                                per shared concern.
+  setup-vm-phases/              gold-build PowerShell phase scripts.
+                                Launched via launch.ps1 + runner.ps1 as
+                                detached Windows scheduled tasks — see
+                                rule 10 below for why synchronous SSH
+                                doesn't work here.
   third-party/mcp-windbg/       vendored upstream fork
 
 skills/                         eight-stage pipeline skill set
@@ -145,6 +155,27 @@ them.
 9. **Lab files follow the eight-stage contract.** Each stage produces
    a fixed filename consumed by the next; the pipeline relies on it.
    See "Lab files" below.
+
+10. **`setup-vm.sh` runs each phase as a detached scheduled task.**
+    Long-running PowerShell over SSH wedges Windows OpenSSH — the
+    worker stalls on child stdout I/O during heavy installs (msiexec
+    MSI extraction, VS Build Tools, etc.). The pattern is:
+    `launch.ps1` registers a one-shot task that runs `runner.ps1 -File
+    <phase.ps1>`, returns to ssh in ~1s; the bash side polls a marker
+    file on the guest via short ssh calls (`upload_and_run_ps1` in
+    `setup-vm.sh`). Each ssh call is sub-5s, so sshd cannot wedge on
+    streaming output. Match this pattern when adding new phases —
+    don't reintroduce long synchronous SSH.
+
+11. **The gold image's NVRAM is preserved alongside `gold.qcow2`.**
+    `seal-vm-gold.sh` writes `vm-images/<gold>-gold-OVMF_VARS.fd`
+    after the flatten succeeds. `backend/kvm.sh::vm_provision`
+    prefers that stash over `/usr/share/OVMF/OVMF_VARS_4M.fd` when
+    cloning the per-role NVRAM. Without the stash, a fresh overlay
+    boots via OVMF's UEFI HDD fallback to `\EFI\Boot\bootx64.efi` —
+    works today but silently fragile across OVMF upgrades and adds
+    extra firmware time before Windows starts. If you add a new
+    backend, replicate the prefer-stash behavior.
 
 ## Lab files
 
