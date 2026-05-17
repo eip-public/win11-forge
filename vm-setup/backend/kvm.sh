@@ -115,7 +115,19 @@ vm_provision() {
 
     rm -f "$overlay" "$nvram"
     qemu-img create -f qcow2 -b "$gold" -F qcow2 "$overlay" >/dev/null
-    cp /usr/share/OVMF/OVMF_VARS_4M.fd "$nvram"
+
+    # Prefer the gold's preserved NVRAM if seal-vm-gold.sh stashed one. A
+    # populated NVRAM has Windows Boot Manager in BootOrder, so OVMF goes
+    # straight to bootmgfw.efi instead of falling back to the generic
+    # \EFI\Boot\bootx64.efi path. Without the stash we still boot (the
+    # fallback works), but it's slower and silently breaks if a future
+    # OVMF version tightens the fallback rules.
+    local gold_nvram="$IMAGES_DIR/${VM_NAME}-gold-OVMF_VARS.fd"
+    if [[ -f "$gold_nvram" ]]; then
+        cp "$gold_nvram" "$nvram"
+    else
+        cp /usr/share/OVMF/OVMF_VARS_4M.fd "$nvram"
+    fi
 
     local xml; xml="$(mktemp)"
     cat >"$xml" <<XML

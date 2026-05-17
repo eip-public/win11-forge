@@ -330,6 +330,19 @@ qemu-img info "$gold_tmp" >/dev/null
 mv -f "$gold_tmp" "$GOLD_PATH"
 log "Flatten complete: $GOLD_PATH"
 
+# Stash the gold's NVRAM alongside the qcow2. backend/kvm.sh::vm_provision
+# prefers this over the empty OVMF template so fresh overlays already have
+# the Windows Boot Manager entry registered — straight to bootmgfw.efi
+# without UEFI fallback gymnastics.
+ACTIVE_NVRAM="$(virsh dumpxml "$VM_NAME" 2>/dev/null | sed -n 's/.*<nvram[^>]*>\(.*\)<\/nvram>.*/\1/p' | head -1)"
+GOLD_NVRAM="$IMAGES_DIR/${VM_NAME}-gold-OVMF_VARS.fd"
+if [[ -n "$ACTIVE_NVRAM" && -f "$ACTIVE_NVRAM" ]]; then
+    cp -f "$ACTIVE_NVRAM" "$GOLD_NVRAM"
+    log "Stashed gold NVRAM: $GOLD_NVRAM"
+else
+    log "Could not locate active NVRAM (dumpxml/<nvram> empty); skipping stash"
+fi
+
 if [[ "$VERIFY_RESTORE" == "true" ]]; then
   log "Verifying restore from disposable overlay"
   rm -f "$RESTORE_OVERLAY" "$RESTORE_OVERLAY.tmp"
