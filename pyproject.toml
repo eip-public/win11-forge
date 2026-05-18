@@ -93,6 +93,59 @@ line-ending = "lf"
 docstring-code-format = true
 skip-magic-trailing-comma = false
 
+# ── Dead-code detection ───────────────────────────────────────────
+# `vulture` finds unused functions, methods, imports, classes, and
+# variables that ruff's pyflakes (F) rules don't reach — specifically
+# unused methods/functions on classes and module-level helpers that
+# pyflakes treats as potentially-external API. Scope mirrors
+# [tool.ruff] / [tool.mypy] above: the host/guest helper scripts under
+# `vm-setup/`. Run locally with:
+#   /path/to/venv/bin/vulture                          # uses this config
+#   /path/to/venv/bin/vulture --min-confidence 80      # only "definitely dead"
+# Also runs in CI on every push and PR (.github/workflows/lint.yml).
+[tool.vulture]
+paths = ["vm-setup"]
+exclude = [
+    # Vendored upstream; lint it upstream.
+    "vm-setup/third-party/",
+    # PowerShell-only directory; vulture only scans .py files so this
+    # is belt-and-braces, but keeps the exclude list aligned with
+    # [tool.mypy] above.
+    "vm-setup/setup-vm-phases/",
+    "*/__pycache__/",
+]
+# Vulture's default confidence is 60 — that surfaces unused
+# methods/functions/classes at meaningful confidence while keeping
+# false-positive noise manageable. Going to 80 would only flag
+# unused imports/variables (already caught by ruff F401/F841), so we
+# stay at 60 to add real value beyond ruff.
+min_confidence = 60
+# Largest unused blocks first — when CI fails, the most consequential
+# offender is at the top of the output.
+sort_by_size = true
+# Functions decorated with these are MCP tool registrations
+# (`@proxy.tool` in target_mcp_http.py) — the decorator hands the
+# function to a FastMCP server, so the symbol is "used" via the
+# decorator side effect even though no static call site exists.
+# Add new MCP decorator names here as they appear.
+ignore_decorators = [
+    "@proxy.tool",
+    "@*.tool",
+]
+# Names that vulture can't statically prove are used, but are:
+#   - public API on a class intentionally exposed to other callers
+#     (QGA.is_available / VMRun.is_available — feature-detection gate
+#     for transport selection, see vm-setup/lib/guest.sh);
+#   - dataclass fields that vulture's analyzer misses because the
+#     attribute access happens on a return value rather than `self.`
+#     (ExecResult.elapsed_s in qga.py / vmrun.py).
+# Keep this list tight — a missing entry should fail CI loudly so the
+# next contributor either wires the API up or deletes it.
+ignore_names = [
+    "is_available",
+    "elapsed_s",
+]
+
 # ── Static type checking ──────────────────────────────────────────
 # Scope mirrors [tool.ruff] above: the host/guest helper scripts
 # under `vm-setup/`. Run locally with:

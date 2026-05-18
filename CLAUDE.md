@@ -279,6 +279,11 @@ break the next stage's inputs.
 #   - lizard 1.17        bash cyclomatic-complexity cap at CCN 12
 #                        (matches ruff's [tool.ruff.lint.mccabe]
 #                        max-complexity for Python).
+#   - vulture 2.14       Python dead-code detection. Scope mirrors
+#                        ruff/mypy. Config: [tool.vulture] in
+#                        pyproject.toml. Complements ruff's F (pyflakes)
+#                        rules by catching unused methods/functions
+#                        that pyflakes treats as potential external API.
 # Use the portable -print0 | xargs -0 form so this works in bash 3.2
 # (macOS default) and zsh too — no `mapfile`.
 SH_FILES_FIND=( -name '*.sh'
@@ -292,6 +297,7 @@ lizard --languages bash -C 12 -L 1000 \
 ruff check
 ruff format --check
 mypy        # static type check; install with: pip install 'mypy==1.20.*'
+vulture     # dead-code detection; install with: pip install 'vulture==2.14'
 
 bats tests/bootstrap-readiness.bats         # gold-image readiness
 bats tests/kvm-backend.bats                 # KVM lab lifecycle

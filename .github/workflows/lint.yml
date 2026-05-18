@@ -8,6 +8,7 @@ name: lint
 #                   includes C90 (mccabe complexity) per [tool.ruff.lint.mccabe]
 #   - ruff format --check on Python helpers (same scope)
 #   - mypy          on Python helpers (same scope as ruff)
+#   - vulture       on Python helpers (dead-code detection; same scope)
 # Config lives in .shellcheckrc and pyproject.toml at repo root.
 
 on:
@@ -158,3 +159,29 @@ jobs:
         # Scope (files, exclude), python_version, and the strict-ish flag
         # set all live under [tool.mypy] in pyproject.toml.
         run: mypy
+
+  vulture:
+    name: vulture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install vulture
+        # vulture finds unused functions, methods, imports, and variables
+        # that ruff's pyflakes (F) rules don't catch — specifically unused
+        # methods on classes and module-level helpers that pyflakes treats
+        # as potential external API. Pin the version so an upstream
+        # heuristic change can't fail CI on a green branch.
+        run: pip install --no-cache-dir 'vulture==2.14'
+
+      - name: vulture
+        # Scope (paths, exclude), min_confidence, sort_by_size,
+        # ignore_decorators, and ignore_names all live under
+        # [tool.vulture] in pyproject.toml. Vulture exits non-zero on
+        # any finding above min_confidence; CI fails accordingly.
+        run: vulture

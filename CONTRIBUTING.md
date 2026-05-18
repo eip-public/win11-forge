@@ -236,9 +236,17 @@ ruff format --check    # CI-style verify
 #   python3 -m venv .venv && .venv/bin/pip install 'mypy==1.20.*'
 #   .venv/bin/mypy
 mypy
+
+# Dead-code detection. Scope, min_confidence, ignore_decorators, and
+# ignore_names live under [tool.vulture] in pyproject.toml. Complements
+# ruff's pyflakes (F) rules — finds unused methods/functions/classes
+# that pyflakes treats as potential external API. In a venv:
+#   python3 -m venv .venv && .venv/bin/pip install 'vulture==2.14'
+#   .venv/bin/vulture
+vulture
 ```
 
-All six checks must pass cleanly on the project's in-scope files.
+All seven checks must pass cleanly on the project's in-scope files.
 The `vm-setup/third-party/` tree (vendored upstream) and `lab/`
 (per-CVE scratch code) are excluded by configuration.
 
