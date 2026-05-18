@@ -24,9 +24,10 @@ trusted network.
 ## Network exposure
 
 The lab pair runs on a private libvirt or VMware network by default
-(`192.168.122.0/24` for KVM, `172.16.87.0/24` for VMware). Those
-networks are host-only / NAT'd out of the box, so the lab endpoints
-are not reachable from the broader LAN unless the host is bridged or
+(`192.168.122.0/24` for KVM, `172.16.236.0/24` for VMware — vmnet8's
+auto-configured subnet, varies per host). Those networks are
+host-only / NAT'd out of the box, so the lab endpoints are not
+reachable from the broader LAN unless the host is bridged or
 forwarded.
 
 Endpoints inside the lab network:
@@ -39,11 +40,33 @@ Endpoints inside the lab network:
   debugger commands. **Full kernel read/write/control of the target.**
 - `:8200/mcp` and `:8201/mcp` — **DesktopCommander** on target and
   debugger respectively. Generic process execution and file I/O on
-  each VM.
+  each VM. The `pendingWelcomeOnboarding` prompt-injection in
+  upstream DC is silenced at lab spawn (see
+  `vm-setup/disable-dc-onboarding.ps1`).
 - `KDNET UDP:50000` between target and debugger.
 
 None of these endpoints authenticate. Anyone who can route to the lab
 subnet has full control of the VMs.
+
+## Hypervisor-side control plane (qga / vmrun)
+
+In addition to the network endpoints above, the lab uses
+**hypervisor-private** channels for orchestration:
+
+- **KVM**: QEMU guest-agent over a virtio-serial channel. The host
+  drives the guest via `virsh qemu-agent-command`. No network
+  listener, no firewall, no authentication.
+- **VMware**: VMware Tools' VIX RPC. The host drives the guest via
+  `vmrun runProgramInGuest` with `forge`/`forge123` credentials.
+
+These channels are not exposed on any network port — they are
+transport-level (virtio-serial / VMware Tools daemon), reachable only
+from a process on the hypervisor host that can talk to the local
+libvirt socket / vmrun binary. The threat model is therefore
+"anyone on the lab host with `libvirt` group or vmrun access has
+full control of the guests" — which is identical to "anyone who
+can spawn the lab in the first place." No new exposure beyond
+existing host trust.
 
 ## Recommended posture
 
