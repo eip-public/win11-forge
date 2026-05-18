@@ -24,6 +24,7 @@ Typical use from bash::
 Or import directly from another Python script. The CLI mode is at the
 bottom of this file for one-shot use from bash.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -46,6 +47,7 @@ class QGAError(RuntimeError):
 class ExecResult:
     """Outcome of `QGA.exec_wait`. Mirrors subprocess.CompletedProcess —
     `rc` instead of `returncode` to keep call sites short."""
+
     rc: int
     stdout: str
     stderr: str
@@ -67,10 +69,14 @@ class QGA:
         (the {"return": ...} envelope from virsh). Raises QGAError if the
         channel isn't there or the command is blacklisted."""
         cmd = [
-            "virsh", "-c", self.uri,
-            "qemu-agent-command", self.domain,
+            "virsh",
+            "-c",
+            self.uri,
+            "qemu-agent-command",
+            self.domain,
             json.dumps(payload),
-            "--timeout", str(virsh_timeout),
+            "--timeout",
+            str(virsh_timeout),
         ]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=virsh_timeout + 5)
         if proc.returncode != 0:
@@ -127,9 +133,7 @@ class QGA:
         err-data (base64), out-truncated (bool), err-truncated (bool)."""
         return cast(
             dict[str, Any],
-            self._run(
-                {"execute": "guest-exec-status", "arguments": {"pid": pid}}
-            )["return"],
+            self._run({"execute": "guest-exec-status", "arguments": {"pid": pid}})["return"],
         )
 
     def exec_wait(
@@ -156,12 +160,10 @@ class QGA:
             st = self.exec_status(pid)
             if st.get("exited"):
                 stdout = (
-                    base64.b64decode(st["out-data"]).decode("utf-8", "replace")
-                    if "out-data" in st else ""
+                    base64.b64decode(st["out-data"]).decode("utf-8", "replace") if "out-data" in st else ""
                 )
                 stderr = (
-                    base64.b64decode(st["err-data"]).decode("utf-8", "replace")
-                    if "err-data" in st else ""
+                    base64.b64decode(st["err-data"]).decode("utf-8", "replace") if "err-data" in st else ""
                 )
                 return ExecResult(
                     rc=int(st.get("exitcode", -1)),
@@ -173,8 +175,11 @@ class QGA:
             time.sleep(interval)
             interval = min(interval * 1.4, 2.0)
         return ExecResult(
-            rc=-1, stdout="", stderr=f"timeout after {timeout}s (pid={pid})",
-            timed_out=True, elapsed_s=round(time.monotonic() - start, 3),
+            rc=-1,
+            stdout="",
+            stderr=f"timeout after {timeout}s (pid={pid})",
+            timed_out=True,
+            elapsed_s=round(time.monotonic() - start, 3),
         )
 
     def run_powershell(
@@ -197,6 +202,7 @@ class QGA:
 # Lets bash callers do `python3 lib/qga.py exec <domain> -- cmd args...`
 # without writing a Python wrapper for each site. Exit code mirrors the
 # guest command's; stdout/stderr are forwarded transparently.
+
 
 def _cli():
     p = argparse.ArgumentParser(description="qga.py — virsh qemu-agent-command helper")
@@ -223,7 +229,7 @@ def _cli():
     sep = raw.index("--") if "--" in raw else None
     if sep is not None:
         flag_args = raw[:sep]
-        guest_argv = raw[sep + 1:]
+        guest_argv = raw[sep + 1 :]
     else:
         flag_args = raw
         guest_argv = []

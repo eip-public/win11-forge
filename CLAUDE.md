@@ -260,7 +260,7 @@ break the next stage's inputs.
 ## Validation before commit
 
 ```bash
-# Lint — also runs in CI (.github/workflows/lint.yml). Config:
+# Lint + format — also runs in CI (.github/workflows/lint.yml). Config:
 #   - .shellcheckrc      empty of rule suppressions; SC1091 and
 #                        SC2148 are handled by narrowly-scoped
 #                        annotations (`# shellcheck source=...`
@@ -268,16 +268,23 @@ break the next stage's inputs.
 #                        call sites.
 #   - pyproject.toml     [tool.ruff] target-version, rule selection,
 #                        per-file ignores; excludes vm-setup/third-party
-#                        and lab/. [tool.mypy] sets python_version
-#                        3.10, files=[vm-setup], strict-ish warnings,
-#                        and ignore_missing_imports for the Windows-
-#                        only fastmcp / mcp_server packages.
+#                        and lab/. [tool.ruff.format] is the Python
+#                        formatter (Black-compatible). [tool.mypy]
+#                        sets python_version 3.10, files=[vm-setup],
+#                        strict-ish warnings, and ignore_missing_imports
+#                        for the Windows-only fastmcp / mcp_server
+#                        packages.
+#   - shfmt v3.13.1      bash formatter; canonical flags are `-i 4 -ci`
+#                        (4-space indent, indented switch-case arms).
 # Use the portable -print0 | xargs -0 form so this works in bash 3.2
 # (macOS default) and zsh too — no `mapfile`.
-find . -name '*.sh' \
-    -not -path './vm-setup/third-party/*' -not -path './lab/*' \
-    -print0 | xargs -0 shellcheck -x -S warning
+SH_FILES_FIND=( -name '*.sh'
+    -not -path './vm-setup/third-party/*'
+    -not -path './lab/*' )
+find . "${SH_FILES_FIND[@]}" -print0 | xargs -0 shellcheck -x -S warning
+find . "${SH_FILES_FIND[@]}" -print0 | xargs -0 shfmt -i 4 -ci -d
 ruff check
+ruff format --check
 mypy        # static type check; install with: pip install 'mypy==1.20.*'
 
 bats tests/bootstrap-readiness.bats         # gold-image readiness

@@ -62,14 +62,14 @@ wait_for_ssh() {
     # `timeout` runs an executable, not a shell function — invoke ssh
     # directly so the timeout actually applies (using ssh_cmd here would
     # silently fail with rc=127 every iteration).
-    while (( elapsed < max_wall_s )); do
+    while ((elapsed < max_wall_s)); do
         if timeout "$probe_timeout_s" \
             ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" \
-                -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
-                "$VM_USER@$VM_IP" 'echo ok' >/dev/null 2>&1; then
+            -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
+            "$VM_USER@$VM_IP" 'echo ok' >/dev/null 2>&1; then
             ok_count=$((ok_count + 1))
             consecutive_ok=$((consecutive_ok + 1))
-            if (( consecutive_ok >= stable_ok_required )); then
+            if ((consecutive_ok >= stable_ok_required)); then
                 echo "[+] $label (${ok_count} OK / ${fail_count} fail over ${elapsed}s)"
                 return 0
             fi
@@ -98,14 +98,17 @@ verify_schtask_running() {
         # `|| true` on the assignment: under set -euo pipefail an ssh failure
         # inside $(...) would otherwise kill the caller before this loop's
         # retry/timeout branch can run.
-        status=$(ssh_cmd "schtasks /Query /TN \"$task\" /V /FO LIST" 2>/dev/null \
-            | tr -d '\r' | awk -F: '/^Status:/ {sub(/^[ \t]+/,"",$2); print $2; exit}') || true
-        [[ "$status" == "Running" ]] && { echo "[+] $task is running"; return 0; }
+        status=$(ssh_cmd "schtasks /Query /TN \"$task\" /V /FO LIST" 2>/dev/null |
+            tr -d '\r' | awk -F: '/^Status:/ {sub(/^[ \t]+/,"",$2); print $2; exit}') || true
+        [[ "$status" == "Running" ]] && {
+            echo "[+] $task is running"
+            return 0
+        }
         sleep 1
     done
     echo "[-] $task did not reach Status=Running within ${max}s (last='$status')" >&2
-    ssh_cmd "schtasks /Query /TN \"$task\" /V /FO LIST" 2>/dev/null \
-        | tr -d '\r' | grep -iE "Status|Last Result|Last Run Time" >&2 || true
+    ssh_cmd "schtasks /Query /TN \"$task\" /V /FO LIST" 2>/dev/null |
+        tr -d '\r' | grep -iE "Status|Last Result|Last Run Time" >&2 || true
     return 1
 }
 
@@ -181,11 +184,11 @@ else
     dc_init
 
     # Clear default blocked commands (includes bcdedit, reg, shutdown, reboot — all needed)
-    dc_set "blockedCommands"    "[]"
+    dc_set "blockedCommands" "[]"
     # Allow access to the full C: drive
     dc_set "allowedDirectories" "[\"C:\\\\\\\\\"]"
     # Disable telemetry
-    dc_set "telemetryEnabled"   "false"
+    dc_set "telemetryEnabled" "false"
     echo "[+] DesktopCommander configured (blockedCommands cleared, C:\\ allowed, telemetry off)"
 
     # Disable DC's "welcome onboarding" — emits a prompt-injection block

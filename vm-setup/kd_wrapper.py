@@ -39,24 +39,24 @@ from typing import IO
 
 # config
 
-KD          = r"C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\kd.exe"
-PY          = r"C:\Python314\python.exe"
-DLL         = r"C:\winforge\windbg-ext-mcp\extension\build\x64\Release\windbgmcpExt.dll"
+KD = r"C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\kd.exe"
+PY = r"C:\Python314\python.exe"
+DLL = r"C:\winforge\windbg-ext-mcp\extension\build\x64\Release\windbgmcpExt.dll"
 HTTP_SCRIPT = r"C:\winforge\windbg-ext-mcp\run_http.py"
-LOG_DIR     = pathlib.Path(r"C:\winforge\logs")
+LOG_DIR = pathlib.Path(r"C:\winforge\logs")
 # Sentinel: while this file exists, the prompt monitor does NOT auto-inject
 # `g` on kd> prompts. Use to hold breaks for synchronous user-mode debugging
 # via MCP (set bp, trigger, inspect stack, step, etc). Created/removed by the
 # agent as needed; absence = default auto-resume behavior.
-HOLD_FLAG   = pathlib.Path(r"C:\winforge\logs\debug-hold.flag")
+HOLD_FLAG = pathlib.Path(r"C:\winforge\logs\debug-hold.flag")
 
-TRANSPORT         = "net:port=50000,key=1.2.3.4"
-HTTP_PORT         = 8100
-PIPE_PATH         = r"\\.\pipe\windbgmcp"
-CONNECT_TIMEOUT_S = 120   # wait up to 2 min per cycle; supervisor retries automatically
-PIPE_TIMEOUT_S    = 120   # wait up to 2 min for pipe after extension injection
+TRANSPORT = "net:port=50000,key=1.2.3.4"
+HTTP_PORT = 8100
+PIPE_PATH = r"\\.\pipe\windbgmcp"
+CONNECT_TIMEOUT_S = 120  # wait up to 2 min per cycle; supervisor retries automatically
+PIPE_TIMEOUT_S = 120  # wait up to 2 min for pipe after extension injection
 HTTP_RESTART_DELAY = 5
-KD_RESTART_DELAY  = 3
+KD_RESTART_DELAY = 3
 
 # logging
 
@@ -75,19 +75,22 @@ log = logging.getLogger("kd_wrapper")
 
 # state
 
-_kd_proc:   subprocess.Popen | None = None
+_kd_proc: subprocess.Popen | None = None
 _http_proc: subprocess.Popen | None = None
 _kd_log_fh: IO[str] | None = None
-_shutdown   = threading.Event()
+_shutdown = threading.Event()
+
 
 def _handle_signal(sig: int, _: types.FrameType | None) -> None:
     log.info(f"Signal {sig} received - shutting down")
     _shutdown.set()
 
+
 signal.signal(signal.SIGTERM, _handle_signal)
-signal.signal(signal.SIGINT,  _handle_signal)
+signal.signal(signal.SIGINT, _handle_signal)
 
 # helpers
+
 
 def _stop(proc: subprocess.Popen | None, name: str) -> None:
     if proc is None or proc.poll() is not None:
@@ -141,7 +144,8 @@ def _start_http() -> subprocess.Popen | None:
         return subprocess.Popen(
             [PY, HTTP_SCRIPT, "--port", str(HTTP_PORT), "--host", "0.0.0.0"],
             cwd=str(pathlib.Path(HTTP_SCRIPT).parent),
-            stdout=out, stderr=err,
+            stdout=out,
+            stderr=err,
         )
     except Exception as e:
         log.warning(f"_start_http failed: {e}; will retry next iteration")
@@ -294,8 +298,7 @@ def _prompt_monitor(proc: subprocess.Popen, cycle: int, pipe_ready_event: thread
                         # No MCP or already tried - just resume (unless held)
                         if hold:
                             log.info(
-                                f"[cycle {cycle}] Hold flag present — "
-                                "leaving target at break (fallback)"
+                                f"[cycle {cycle}] Hold flag present — leaving target at break (fallback)"
                             )
                         else:
                             send("g")
@@ -305,7 +308,7 @@ def _prompt_monitor(proc: subprocess.Popen, cycle: int, pipe_ready_event: thread
                 log.info(f"[cycle {cycle}] Pipe appeared after injection!")
                 pipe_ready_event.set()
                 # Keep monitoring for subsequent breaks (re-inject if pipe disappears)
-                injected = False   # allow re-injection if extension unloads
+                injected = False  # allow re-injection if extension unloads
 
             time.sleep(0.5)
     finally:
@@ -319,6 +322,7 @@ def _prompt_monitor(proc: subprocess.Popen, cycle: int, pipe_ready_event: thread
 
 
 # supervisor loop
+
 
 def run() -> None:
     global _kd_proc, _http_proc
@@ -374,9 +378,7 @@ def run() -> None:
                     log.info(f"[cycle {cycle}] HTTP server pid: {_http_proc.pid}")
                     log.info(f"[cycle {cycle}] MCP endpoint: http://0.0.0.0:{HTTP_PORT}/mcp")
         else:
-            log.info(
-                f"[cycle {cycle}] No pipe yet - waiting for first break to load extension"
-            )
+            log.info(f"[cycle {cycle}] No pipe yet - waiting for first break to load extension")
             log.info(
                 f"[cycle {cycle}] Trigger: run a PoC (crash) "
                 "or './setup.sh lab load-mcp' (NtSystemDebugControl)"
@@ -413,10 +415,7 @@ def run() -> None:
 
             if _kd_proc.poll() is not None:
                 rc = _kd_proc.returncode
-                log.warning(
-                    f"[cycle {cycle}] kd.exe exited "
-                    f"(code={rc}/0x{rc & 0xFFFFFFFF:08X})"
-                )
+                log.warning(f"[cycle {cycle}] kd.exe exited (code={rc}/0x{rc & 0xFFFFFFFF:08X})")
                 log.info(f"[cycle {cycle}] Target likely BSODed - restarting for next crash")
                 break
 

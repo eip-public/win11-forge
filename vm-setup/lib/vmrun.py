@@ -22,6 +22,7 @@ Constraints:
     in the gold via setup-vm-phases/install_vmware_tools.ps1.
   - vmrun must be on PATH on the host. Ships with VMware Workstation.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -113,18 +114,24 @@ class VMRun:
         if not capture:
             try:
                 p = self._vmrun(
-                    "runProgramInGuest", self.vmx,
-                    "-interactive", *argv,
+                    "runProgramInGuest",
+                    self.vmx,
+                    "-interactive",
+                    *argv,
                     timeout=timeout,
                 )
                 return ExecResult(
-                    rc=p.returncode, stdout="", stderr="",
+                    rc=p.returncode,
+                    stdout="",
+                    stderr="",
                     timed_out=False,
                     elapsed_s=round(time.monotonic() - start, 3),
                 )
             except subprocess.TimeoutExpired:
                 return ExecResult(
-                    rc=-1, stdout="", stderr=f"timeout after {timeout}s",
+                    rc=-1,
+                    stdout="",
+                    stderr=f"timeout after {timeout}s",
                     timed_out=True,
                     elapsed_s=round(time.monotonic() - start, 3),
                 )
@@ -148,7 +155,7 @@ class VMRun:
         def _bat_quote(s: str) -> str:
             # cmd.exe argument quoting: wrap in "..." if it contains
             # whitespace, double any embedded ".
-            if any(c in s for c in (' ', '\t', '&', '|', '<', '>', '^')):
+            if any(c in s for c in (" ", "\t", "&", "|", "<", ">", "^")):
                 return '"' + s.replace('"', '""') + '"'
             return s
 
@@ -157,41 +164,46 @@ class VMRun:
         # to env vars don't leak. The redirects happen here, OUTSIDE the
         # quoted command, so cmd's parser sees them as redirects not args.
         bat_body = (
-            "@echo off\r\n"
-            "setlocal\r\n"
-            f'{bat_cmd} > "{guest_out}" 2> "{guest_err}"\r\n'
-            "exit /b %ERRORLEVEL%\r\n"
+            f'@echo off\r\nsetlocal\r\n{bat_cmd} > "{guest_out}" 2> "{guest_err}"\r\nexit /b %ERRORLEVEL%\r\n'
         )
 
         # Stage the batch file: write locally, copyFileFromHostToGuest.
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".bat", encoding="ascii", delete=False
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".bat", encoding="ascii", delete=False) as tmp:
             tmp.write(bat_body)
             host_bat = tmp.name
 
         try:
             # Ensure capture dir exists.
             self._vmrun(
-                "createDirectoryInGuest", self.vmx, _GUEST_CAPTURE_DIR,
+                "createDirectoryInGuest",
+                self.vmx,
+                _GUEST_CAPTURE_DIR,
                 timeout=10,
             )  # idempotent: errors silently on existing dir
             # Upload the batch file.
             self._vmrun(
-                "copyFileFromHostToGuest", self.vmx, host_bat, guest_bat,
+                "copyFileFromHostToGuest",
+                self.vmx,
+                host_bat,
+                guest_bat,
                 timeout=15,
             )
             # Run the batch file.
             p = self._vmrun(
-                "runProgramInGuest", self.vmx,
+                "runProgramInGuest",
+                self.vmx,
                 "-interactive",
-                r"C:\Windows\System32\cmd.exe", "/c", guest_bat,
+                r"C:\Windows\System32\cmd.exe",
+                "/c",
+                guest_bat,
                 timeout=timeout,
             )
             rc = p.returncode
         except subprocess.TimeoutExpired:
             return ExecResult(
-                rc=-1, stdout="", stderr=f"timeout after {timeout}s",
+                rc=-1,
+                stdout="",
+                stderr=f"timeout after {timeout}s",
                 timed_out=True,
                 elapsed_s=round(time.monotonic() - start, 3),
             )
@@ -209,14 +221,18 @@ class VMRun:
         for f in (guest_out, guest_err, guest_bat):
             try:
                 self._vmrun(
-                    "deleteFileInGuest", self.vmx, f,
+                    "deleteFileInGuest",
+                    self.vmx,
+                    f,
                     timeout=5,
                 )
             except subprocess.TimeoutExpired:
                 pass
 
         return ExecResult(
-            rc=rc, stdout=stdout, stderr=stderr,
+            rc=rc,
+            stdout=stdout,
+            stderr=stderr,
             timed_out=False,
             elapsed_s=round(time.monotonic() - start, 3),
         )
@@ -244,8 +260,10 @@ class VMRun:
         try:
             try:
                 p = self._vmrun(
-                    "copyFileFromGuestToHost", self.vmx,
-                    guest_path, host_path,
+                    "copyFileFromGuestToHost",
+                    self.vmx,
+                    guest_path,
+                    host_path,
                     timeout=10,
                 )
             except subprocess.TimeoutExpired:
@@ -262,6 +280,7 @@ class VMRun:
 
 
 # ── CLI front-end ─────────────────────────────────────────────────
+
 
 def _cli():
     p = argparse.ArgumentParser(description="vmrun.py — vmrun runProgramInGuest wrapper")
@@ -289,7 +308,7 @@ def _cli():
     raw = sys.argv[1:]
     sep = raw.index("--") if "--" in raw else None
     if sep is not None:
-        flag_args, guest_argv = raw[:sep], raw[sep + 1:]
+        flag_args, guest_argv = raw[:sep], raw[sep + 1 :]
     else:
         flag_args, guest_argv = raw, []
     args = p.parse_args(flag_args)

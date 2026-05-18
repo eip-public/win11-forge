@@ -25,20 +25,35 @@ DO_UNZIP=1
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --variant)   VARIANT="$2"; shift 2 ;;
-        --dest)      DEST="$2"; shift 2 ;;
-        --no-unzip)  DO_UNZIP=0; shift ;;
-        -h|--help)
+        --variant)
+            VARIANT="$2"
+            shift 2
+            ;;
+        --dest)
+            DEST="$2"
+            shift 2
+            ;;
+        --no-unzip)
+            DO_UNZIP=0
+            shift
+            ;;
+        -h | --help)
             sed -n '2,/^set -/p' "$0" | sed 's/^# \?//;$d'
             exit 0
             ;;
-        *) echo "Unknown option: $1" >&2; exit 2 ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 2
+            ;;
     esac
 done
 
 case "$VARIANT" in
-    HyperV|VirtualBox|VMware) ;;
-    *) echo "Unsupported variant: $VARIANT (expected HyperV|VirtualBox|VMware)" >&2; exit 2 ;;
+    HyperV | VirtualBox | VMware) ;;
+    *)
+        echo "Unsupported variant: $VARIANT (expected HyperV|VirtualBox|VMware)" >&2
+        exit 2
+        ;;
 esac
 
 [[ -n "$DEST" ]] || DEST="./windev/WinDevEval.${VARIANT}.zip"
@@ -48,8 +63,11 @@ mkdir -p "$DEST_DIR"
 REDIRECT_URL="https://aka.ms/windev_VM_${VARIANT}"
 echo "[*] Resolving $REDIRECT_URL …"
 REAL_URL="$(curl -sIL "$REDIRECT_URL" | awk -v IGNORECASE=1 '/^location:/{u=$2} END{print u}' | tr -d '\r')"
-[[ "$REAL_URL" == https://*microsoft.com/*.zip ]] \
-    || { echo "Unexpected redirect target: $REAL_URL" >&2; exit 1; }
+[[ "$REAL_URL" == https://*microsoft.com/*.zip ]] ||
+    {
+        echo "Unexpected redirect target: $REAL_URL" >&2
+        exit 1
+    }
 
 EXPECTED_SIZE="$(curl -sIL "$REAL_URL" | awk -v IGNORECASE=1 '/^content-length:/{print $2}' | tail -1 | tr -d '\r')"
 echo "    → $REAL_URL"
@@ -75,10 +93,13 @@ if [[ -n "${EXPECTED_SIZE:-}" && "$actual" != "$EXPECTED_SIZE" ]]; then
 fi
 echo "[+] Downloaded $DEST ($actual bytes)"
 
-if (( DO_UNZIP )); then
+if ((DO_UNZIP)); then
     echo "[*] Unzipping into $DEST_DIR"
     unzip -o -q "$DEST" -d "$DEST_DIR"
     DISK="$(find "$DEST_DIR" -maxdepth 2 -type f \( -iname '*.vhdx' -o -iname '*.vhd' -o -iname '*.ova' -o -iname '*.vmdk' \) | head -1)"
-    [[ -n "$DISK" ]] || { echo "No disk image found after unzip" >&2; exit 1; }
+    [[ -n "$DISK" ]] || {
+        echo "No disk image found after unzip" >&2
+        exit 1
+    }
     echo "[+] Disk image: $DISK"
 fi

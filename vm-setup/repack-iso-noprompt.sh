@@ -36,7 +36,10 @@ set -Eeuo pipefail
 SRC="${1:?usage: $0 <src.iso> <dst.iso>}"
 DST="${2:?usage: $0 <src.iso> <dst.iso>}"
 
-[[ -f "$SRC" ]] || { echo "[-] source not found: $SRC" >&2; exit 1; }
+[[ -f "$SRC" ]] || {
+    echo "[-] source not found: $SRC" >&2
+    exit 1
+}
 
 # Idempotency: skip the ~30–60s repack if dst is up to date.
 if [[ -f "$DST" ]] && [[ "$DST" -nt "$SRC" ]]; then
@@ -45,8 +48,11 @@ if [[ -f "$DST" ]] && [[ "$DST" -nt "$SRC" ]]; then
 fi
 
 for tool in 7z xorriso isoinfo; do
-    command -v "$tool" >/dev/null \
-        || { echo "[-] $tool not found in PATH — apt install p7zip-full xorriso genisoimage" >&2; exit 1; }
+    command -v "$tool" >/dev/null ||
+        {
+            echo "[-] $tool not found in PATH — apt install p7zip-full xorriso genisoimage" >&2
+            exit 1
+        }
 done
 
 WORKDIR="$(mktemp -d)"
@@ -59,8 +65,11 @@ echo "[*] Extracting $SRC into $WORKDIR (~5 GB, ~15s on SSD)"
 # These have shipped in retail Windows ISOs since at least Windows 10, so
 # absence indicates either a tampered ISO or an unexpected build.
 for f in efi/microsoft/boot/efisys_noprompt.bin efi/microsoft/boot/cdboot_noprompt.efi; do
-    [[ -f "$WORKDIR/$f" ]] \
-        || { echo "[-] $f missing inside $SRC — is this a real Windows install ISO?" >&2; exit 1; }
+    [[ -f "$WORKDIR/$f" ]] ||
+        {
+            echo "[-] $f missing inside $SRC — is this a real Windows install ISO?" >&2
+            exit 1
+        }
 done
 
 echo "[*] Activating no-prompt boot blobs (overwriting prompting variants in-place)"
@@ -88,10 +97,10 @@ xorriso -as mkisofs \
     -iso-level 3 -full-iso9660-filenames \
     -volid "$VOLID" \
     -eltorito-boot boot/etfsboot.com \
-        -eltorito-catalog boot/boot.cat \
-        -no-emul-boot -boot-load-size 8 -boot-info-table -hide boot/boot.cat \
+    -eltorito-catalog boot/boot.cat \
+    -no-emul-boot -boot-load-size 8 -boot-info-table -hide boot/boot.cat \
     -eltorito-alt-boot \
-        -e efi/microsoft/boot/efisys_noprompt.bin -no-emul-boot \
+    -e efi/microsoft/boot/efisys_noprompt.bin -no-emul-boot \
     -isohybrid-gpt-basdat \
     -o "$TMP" "$WORKDIR" 2>&1 | tail -3
 mv -f "$TMP" "$DST"

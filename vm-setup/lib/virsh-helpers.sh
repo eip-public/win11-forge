@@ -15,12 +15,12 @@ virsh_or_warn() {
     # `|| rc=$?` idiom instead.
     local out rc=0
     out="$(virsh "$@" 2>&1)" || rc=$?
-    (( rc == 0 )) && return 0
+    ((rc == 0)) && return 0
     case "$out" in
-        *"Domain not found"*|*"failed to get domain"*) ;;
-        *"is not running"*|*"already inactive"*) ;;
-        *"is already active"*|*"already running"*) ;;
-        *"no snapshot"*|*"snapshot file does not exist"*) ;;
+        *"Domain not found"* | *"failed to get domain"*) ;;
+        *"is not running"* | *"already inactive"*) ;;
+        *"is already active"* | *"already running"*) ;;
+        *"no snapshot"* | *"snapshot file does not exist"*) ;;
         *) printf '\033[1;33m[!]\033[0m virsh %s — %s\n' "$*" "${out//$'\n'/ | }" >&2 ;;
     esac
     return 0

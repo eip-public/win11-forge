@@ -102,14 +102,14 @@ bats tests/vmware-backend.bats          # VMware lab lifecycle
 bats tests/lab-lifecycle.bats           # backend-agnostic checks
 ```
 
-## Linting
+## Linting and formatting
 
-The repo lints bash and Python (ruff + mypy) on every push/PR via
+The repo lints and format-checks bash and Python on every push/PR via
 `.github/workflows/lint.yml`. Run the same checks locally before
 opening a PR:
 
 ```bash
-# Bash — install-deps.sh, setup.sh, vm-setup/**/*.sh
+# Bash lint — install-deps.sh, setup.sh, vm-setup/**/*.sh
 # `-x` makes shellcheck follow `source` / `.` directives so the
 # lib/ helpers are checked in the context that uses them.
 # Portable across bash 3.2 (macOS default) and zsh — no `mapfile`.
@@ -118,9 +118,26 @@ find . -name '*.sh' \
     -not -path './lab/*' \
     -print0 | xargs -0 shellcheck -x -S warning
 
-# Python — vm-setup/*.py, vm-setup/lib/*.py
+# Bash format — same scope. Canonical flags:
+#   -i 4   4-space indent (matches the dominant existing style)
+#   -ci    indent switch-case arms one level
+# CI pins shfmt v3.13.1; install locally with `brew install shfmt`
+# (macOS) or download the matching pinned binary from
+# https://github.com/mvdan/sh/releases.
+find . -name '*.sh' \
+    -not -path './vm-setup/third-party/*' \
+    -not -path './lab/*' \
+    -print0 | xargs -0 shfmt -i 4 -ci -w   # in-place; use -d for diff
+
+# Python lint — vm-setup/*.py, vm-setup/lib/*.py
 # Rule set, per-file ignores, and target-version live in pyproject.toml.
 ruff check
+
+# Python format — same scope and pyproject.toml block
+# ([tool.ruff.format]). Black-compatible output from the same ruff
+# binary; --check verifies, no flag rewrites in place.
+ruff format            # write changes
+ruff format --check    # CI-style verify
 
 # Static type checking. Scope, python_version, and the strict-ish
 # flag set live under [tool.mypy] in pyproject.toml. In a venv:
@@ -129,7 +146,7 @@ ruff check
 mypy
 ```
 
-All three checks must pass cleanly on the project's in-scope files.
+All five checks must pass cleanly on the project's in-scope files.
 The `vm-setup/third-party/` tree (vendored upstream) and `lab/`
 (per-CVE scratch code) are excluded by configuration.
 

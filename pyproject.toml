@@ -64,9 +64,19 @@ ignore = [
 "vm-setup/lib/vmrun.py" = ["B008"]
 "vm-setup/lib/qga.py" = ["B008"]
 
+# ── Code formatter ────────────────────────────────────────────────
+# `ruff format` is the canonical Python formatter for this repo
+# (Black-compatible output, but pulled from the same ruff binary that
+# runs the linter). Scope and target-version are inherited from
+# [tool.ruff] above. Run locally with:
+#   ruff format            # write changes
+#   ruff format --check    # CI-style verify
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+line-ending = "lf"
+docstring-code-format = true
+skip-magic-trailing-comma = false
 
 # ── Static type checking ──────────────────────────────────────────
 # Scope mirrors [tool.ruff] above: the host/guest helper scripts
