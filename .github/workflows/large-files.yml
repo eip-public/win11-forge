@@ -1,0 +1,49 @@
+name: large-files
+
+# Detects overly large files in the repo. Two caps are enforced:
+#
+#   - Binary-file size: 1 MiB. Directly defends CLAUDE.md hard rule 8
+#     ("No surprise vendored binaries"). New artifacts must be fetched
+#     at install time with a sha256 check, not committed.
+#   - Text-file line count: 1500 lines. Flags source files that have
+#     grown into refactor-me territory.
+#
+# Allowlist + scope exclusions live in check-file-sizes.sh at repo root.
+# That script is the single source of truth and is runnable locally:
+#
+#   ./check-file-sizes.sh
+#
+# Same script is invoked here so CI and local checks can't drift.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  size-cap:
+    name: size-cap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # `git ls-files` only needs the working tree; a shallow
+          # checkout (the default) is sufficient and faster.
+          fetch-depth: 1
+
+      - name: Ensure `file` is available
+        # `file --mime` is used to distinguish binary blobs (skip the
+        # line-count cap) from text. ubuntu-latest ships it, but be
+        # explicit so a future runner image change can't silently
+        # disable the text/binary discrimination.
+        run: |
+          if ! command -v file >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y file
+          fi
+          file --version | head -n1
+
+      - name: Run size-cap check
+        run: ./check-file-sizes.sh
