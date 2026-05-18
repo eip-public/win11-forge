@@ -29,7 +29,6 @@ from __future__ import annotations
 import argparse
 import base64
 import json
-import shlex
 import subprocess
 import sys
 import time
@@ -152,8 +151,14 @@ class QGA:
         while time.monotonic() < deadline:
             st = self.exec_status(pid)
             if st.get("exited"):
-                stdout = base64.b64decode(st["out-data"]).decode("utf-8", "replace") if "out-data" in st else ""
-                stderr = base64.b64decode(st["err-data"]).decode("utf-8", "replace") if "err-data" in st else ""
+                stdout = (
+                    base64.b64decode(st["out-data"]).decode("utf-8", "replace")
+                    if "out-data" in st else ""
+                )
+                stderr = (
+                    base64.b64decode(st["err-data"]).decode("utf-8", "replace")
+                    if "err-data" in st else ""
+                )
                 return ExecResult(
                     rc=int(st.get("exitcode", -1)),
                     stdout=stdout,
@@ -227,11 +232,13 @@ def _cli():
 
     if args.cmd == "exec":
         if not guest_argv:
-            sys.stderr.write("exec needs argv (after `--`)\n"); sys.exit(2)
+            sys.stderr.write("exec needs argv (after `--`)\n")
+            sys.exit(2)
         try:
             r = qga.exec_wait(guest_argv, timeout=args.timeout)
         except QGAError as e:
-            sys.stderr.write(f"qga: {e}\n"); sys.exit(125)
+            sys.stderr.write(f"qga: {e}\n")
+            sys.exit(125)
         sys.stdout.write(r.stdout)
         sys.stderr.write(r.stderr)
         sys.exit(r.rc if not r.timed_out else 124)
@@ -241,7 +248,8 @@ def _cli():
         try:
             r = qga.run_powershell(script, timeout=args.timeout)
         except QGAError as e:
-            sys.stderr.write(f"qga: {e}\n"); sys.exit(125)
+            sys.stderr.write(f"qga: {e}\n")
+            sys.exit(125)
         sys.stdout.write(r.stdout)
         sys.stderr.write(r.stderr)
         sys.exit(r.rc if not r.timed_out else 124)

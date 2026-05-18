@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared defaults for win11-forge VM provisioning. Profile-specific
 # defaults (VM_NAME, VM_RAM) stay in setup.sh / create-vm.sh — the
 # gold-build profile differs from standalone create-vm.sh.

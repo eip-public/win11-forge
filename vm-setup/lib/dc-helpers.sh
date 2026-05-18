@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # DesktopCommander MCP helpers shared by role-bootstrap scripts.
 # Caller must set DC_URL (e.g. "http://192.168.122.100:8200/mcp")
 # before calling dc_init / dc_set.

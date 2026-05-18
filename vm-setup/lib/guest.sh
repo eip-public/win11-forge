@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Transport-agnostic guest command helpers shared by the role-bootstrap
 # scripts. Picks qga (KVM) or vmrun (VMware) when their respective
 # guest-agent is reachable; otherwise falls back to ssh (legacy gold or

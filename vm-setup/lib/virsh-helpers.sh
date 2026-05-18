@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared libvirt cleanup helpers.
 #
 # virsh_or_warn — wrapper for virsh calls (destroy/undefine/snapshot-delete/

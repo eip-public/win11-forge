@@ -1,0 +1,24 @@
+# Repo-level shellcheck policy.
+#
+# CI runs:
+#   shellcheck -x -S warning $(find . -name '*.sh' \
+#       -not -path './vm-setup/third-party/*' \
+#       -not -path './lab/*')
+#
+# The `-x` flag follows `source`/`.` directives, so the lib/ helpers
+# get checked in the context of the script that includes them.
+#
+# Note: no repo-wide rule suppressions are configured here. Both
+# previously-suppressed checks (SC1091 for dynamic source paths, SC2148
+# for source-only fragments) are handled with narrowly-scoped
+# annotations at the actual call sites:
+#
+#   - SC1091:  `# shellcheck source=path/to/file` on the few `source`
+#              lines whose target is dynamic (e.g. backend dispatch in
+#              setup.sh).
+#   - SC2148:  `# shellcheck shell=bash` directives at the top of the
+#              source-only fragments under vm-setup/lib/.
+#
+# Keeping the config narrow means CI will still catch newly-introduced
+# bad source paths or new .sh files that ship without a shebang or
+# shell directive.

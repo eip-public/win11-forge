@@ -53,7 +53,6 @@ fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VM_SETUP="$ROOT/vm-setup"
-UNATTEND_DIR="$ROOT/unattend-iso"
 IMAGES_DIR="$ROOT/vm-images"
 ISOS_DIR="$ROOT/isos"
 SSH_KEY="$ROOT/vm-ssh-key"
@@ -346,8 +345,7 @@ cmd_stop() {
     virsh dominfo "$VM_NAME" >/dev/null 2>&1 || die "VM $VM_NAME not defined."
     log "Graceful shutdown (60s grace)"
     virsh_or_warn shutdown "$VM_NAME"
-    local i
-    for i in $(seq 1 12); do
+    for _ in $(seq 1 12); do
         [[ "$(virsh domstate "$VM_NAME" 2>/dev/null)" == "shut off" ]] && { ok "Stopped"; return; }
         sleep 5
     done
@@ -520,7 +518,7 @@ _lab_wait_ssh() {
 # probe error.
 _lab_wait_diag() {
     local ip="$1" label="$2" elapsed="$3" ok_count="$4" fail_count="$5" last_fail="$6" transport="${7:-?}"
-    local role domain domstate ping_ms port22 qga_state
+    local role domain domstate ping_ms port22
     role="$([[ "$ip" == "$TARGET_IP" ]] && echo target || echo debugger)"
     case "$role" in
         target)   domain="$TARGET_NAME" ;;
@@ -623,8 +621,7 @@ _lab_wait_kd() {
     _lab_wait_ssh "$TARGET_IP" "target"
 
     log "Waiting for KDNET connection in kd_wrapper.log (up to 180s)..."
-    local i
-    for i in $(seq 1 60); do
+    for _ in $(seq 1 60); do
         _lab_kd_connected && { ok "KDNET connected"; return 0; }
         sleep 3
     done
@@ -679,8 +676,8 @@ _lab_load_mcp() {
     # timeout 10 around each attempt guards against a hung single session
     # (see _lab_wait_ssh comment for the underlying failure mode).
     log "Waiting for target SSH (confirms kernel fully initialized)..."
-    local i ssh_up=false
-    for i in $(seq 1 24); do
+    local ssh_up=false
+    for _ in $(seq 1 24); do
         timeout 10 sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             -o ConnectTimeout=3 -o LogLevel=ERROR "$VM_USER@$TARGET_IP" 'echo ok' \
             >/dev/null 2>&1 && { ssh_up=true; break; }
@@ -721,7 +718,7 @@ _lab_load_mcp() {
     # in practice — bumped to 180s with 3s intervals.
     log "Waiting for MCP HTTP endpoint (up to 180s)..."
     local mcp_up=false
-    for i in $(seq 1 60); do
+    for _ in $(seq 1 60); do
         _lab_mcp_http_live && { mcp_up=true; break; }
         sleep 3
     done

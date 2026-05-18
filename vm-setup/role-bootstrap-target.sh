@@ -93,8 +93,8 @@ wait_for_ssh() {
 # For long-running actions, Status=Running and Last Result=267009 (0x41301
 # SCHED_S_TASK_RUNNING) is the healthy state.
 verify_schtask_running() {
-    local task="$1" max="${2:-10}" i status
-    for i in $(seq 1 "$max"); do
+    local task="$1" max="${2:-10}" status
+    for _ in $(seq 1 "$max"); do
         # `|| true` on the assignment: under set -euo pipefail an ssh failure
         # inside $(...) would otherwise kill the caller before this loop's
         # retry/timeout branch can run.
@@ -156,7 +156,7 @@ verify_schtask_running TargetDesktopBoot
 
 # Wait for HTTP endpoint to be reachable
 echo "[*] Waiting for DesktopCommander MCP on :8200..."
-for i in $(seq 1 20); do
+for _ in $(seq 1 20); do
     status=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 \
         -X POST "http://$VM_IP:8200/mcp" \
         -H "Content-Type: application/json" \
@@ -175,6 +175,8 @@ else
 
     # shellcheck source=lib/dc-helpers.sh
     . "$SCRIPT_DIR/lib/dc-helpers.sh"
+    # DC_URL is consumed by dc_init / dc_set in dc-helpers.sh
+    # shellcheck disable=SC2034
     DC_URL="http://$VM_IP:8200/mcp"
     dc_init
 
@@ -248,7 +250,7 @@ guest_powershell 'schtasks /Run /TN TargetMcpWindbgBoot' >/dev/null
 verify_schtask_running TargetMcpWindbgBoot
 
 echo "[*] Waiting for mcp-windbg on :8300..."
-for i in $(seq 1 20); do
+for _ in $(seq 1 20); do
     # :8300 requires a session handshake; a bare GET returns 406 or similar.
     # ANY non-000 HTTP code means the listener is up.
     status=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 \
