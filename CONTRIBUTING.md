@@ -90,6 +90,90 @@ win11-forge/
 - Do not leak machine-specific paths (`/Users/<name>/...`,
   `/home/<name>/...`). Use `$HOME` and the canonical lab paths.
 
+## Naming conventions
+
+These conventions are enforced by linter where possible and otherwise
+documented here as the canonical source. New code must match; existing
+code must not regress.
+
+### Python (`vm-setup/*.py`, `vm-setup/lib/*.py`)
+
+Partially enforced by `ruff check` via the `N` (pep8-naming) rule set
+in `pyproject.toml`. CI fails on every rule below that is tagged
+**[ruff]**; the remaining rules tagged **[convention]** are reviewed
+by hand. ruff's `N` family catches class/function/argument/local
+naming and mixedCase globals, but it does *not* require module-level
+constants to be uppercase (e.g. `http_port = 8100` passes
+`ruff check --select N` even though we want `HTTP_PORT`).
+
+- **[ruff]** `snake_case` for functions, methods, variables,
+  parameters, and attributes: `start_kd`, `pipe_appeared`,
+  `_kd_log_fh` (N802/N803/N806).
+- **[ruff]** `PascalCase` for classes and exceptions: `QGA`,
+  `QGAError`, `ExecResult` (N801).
+- **[ruff]** No mixedCase globals or arguments (N815/N816).
+- **[convention]** `UPPER_SNAKE_CASE` for module-level constants:
+  `HTTP_PORT`, `PIPE_TIMEOUT_S`, `KD_RESTART_DELAY`. ruff's `N` rules
+  reject `mixedCase` here but accept lowercase; reviewers reject
+  lowercase.
+- **[convention]** `snake_case` for module filenames:
+  `target_mcp_http.py`, `kd_wrapper.py`.
+- **[convention]** Leading underscore `_name` for module-private
+  helpers and module globals: `_run`, `_pipe_exists`, `_kd_log_fh`,
+  `_shutdown`. ruff enforces this only for `__all__`-listed names;
+  the broader rule is reviewer-enforced.
+- **[convention]** Constants that encode a unit go in the name
+  suffix: `*_S` for seconds, `*_MS` for milliseconds, `*_BYTES` /
+  `*_KB` for sizes, `*_PORT` for TCP/UDP ports (`CONNECT_TIMEOUT_S`,
+  `HTTP_PORT`).
+
+### Bash (`*.sh`)
+
+shellcheck does not enforce these directly, but the existing tree is
+internally consistent and new code should match. Mismatches show up
+in code review.
+
+- `UPPER_SNAKE_CASE` for environment-overridable settings and exported
+  values that drive behavior across files: `WINFORGE_BACKEND`,
+  `VM_NAME`, `VM_IP`, `DISK_SIZE`, `SSH_TIMEOUT_SECONDS`. Any setting
+  the user is expected to override via the shell environment goes in
+  this bucket.
+- `UPPER_SNAKE_CASE` for module-level (top-of-file) constants and
+  derived paths: `SCRIPT_DIR`, `VM_SETUP`, `IMAGES_DIR`, `LOG_FILE`.
+- `snake_case` for shell functions: `preflight`, `wait_for_ssh`,
+  `_ssh_probe`, `ensure_dhcp_reservations`. A leading underscore
+  marks a file-local helper (`_ssh_probe`, `_lab_wait_ssh`).
+- `snake_case` for `local` variables inside functions: `local
+  probe_timeout_s`, `local consecutive_ok=0`. Loop counters that
+  shellcheck flagged as unused are renamed to a single underscore
+  (`for _ in ...`).
+- `kebab-case` for script filenames and CLI subcommands:
+  `role-bootstrap-target.sh`, `seal-vm-gold.sh`, `setup.sh lab
+  spawn`, `setup.sh lab load-mcp`.
+- Library fragments (sourced, no shebang) live under `vm-setup/lib/`
+  and carry a `# shellcheck shell=bash` directive on line 1.
+
+### PowerShell (`*.ps1`)
+
+PSScriptAnalyzer is not currently wired into CI, but the existing
+scripts follow these conventions:
+
+- `Verb-Noun` for cmdlet-style functions, using Microsoft-approved
+  verbs (`Get-`, `Set-`, `Install-`, `Disable-`, etc.).
+- `PascalCase` for variables and parameters: `$ScriptDir`, `$LogPath`,
+  `$IsAuditMode`. Single-letter loop variables (`$i`) are fine inside
+  tight loops.
+- ASCII-only string literals (em-dashes etc. break the encoding round
+  trip into the guest — see the *Style* section above).
+
+### Lab files (`lab/CVE-YYYY-NNNNN/`)
+
+The eight-stage pipeline reads its predecessor's output by filename;
+ad-hoc names break the next stage. The canonical filenames are:
+`intel_brief.md`, `diff_analysis.md`, `lab_setup_report.md`,
+`poc-dev.md`, `poc_verification_report.md`, `bypass_analysis.md`,
+`qa-check.md`, `disclosure.md`. See `CLAUDE.md` for the full contract.
+
 ## Tests
 
 The repo ships [bats](https://github.com/bats-core/bats-core) suites
