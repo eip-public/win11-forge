@@ -222,85 +222,125 @@ PY
     ok "libvirt default network restarted with DNS forwarders"
 }
 
-check_mode() {
-    local fail=0
-
-    printf '  %-40s ' "/dev/kvm:"
-    if [[ -e /dev/kvm ]]; then ok "present"; else
-        warn "missing (enable VT-x/AMD-V)"
-        fail=1
+_emit_check() {
+    # _emit_check <label> <pass|fail> <pass-msg> <fail-msg>
+    # Always prints the label + status line. Returns 0 on pass, 1 on fail
+    # so the caller can OR into the running tally.
+    local label="$1" status="$2" pass_msg="$3" fail_msg="$4"
+    printf '  %-40s ' "$label:"
+    if [[ "$status" == "pass" ]]; then
+        ok "$pass_msg"
+        return 0
     fi
+    warn "$fail_msg"
+    return 1
+}
 
-    local p
-    for p in "${APT_PKGS[@]}"; do
-        printf '  %-40s ' "apt: $p:"
-        if dpkg -s "$p" >/dev/null 2>&1; then
-            ok "installed"
+_check_packages() {
+    # _check_packages <category-label> <name-of-array...>
+    # Iterates an array of names and applies a per-category predicate:
+    #   apt   -> dpkg -s
+    #   pipx  -> command -v   (pipx installs land in PATH)
+    # Returns 1 if any required package is missing.
+    local category="$1"
+    shift
+    local fail=0 p status
+    for p in "$@"; do
+        case "$category" in
+            apt) dpkg -s "$p" >/dev/null 2>&1 && status=pass || status=fail ;;
+            pipx) command -v "$p" >/dev/null 2>&1 && status=pass || status=fail ;;
+            *) status=fail ;;
+        esac
+        _emit_check "$category: $p" "$status" "installed" "missing" || fail=1
+    done
+    return $fail
+}
+
+_check_ghidra_artifacts() {
+    # /opt/ghidra and the BinExport plugin are *optional* — neither
+    # contributes to the running fail tally. ghidriff and BinDiff don't
+    # gate the lab; check_mode still emits a status line so the operator
+    # can see what's missing.
+    [[ -d /opt/ghidra ]] &&
+        _emit_check "/opt/ghidra (for ghidriff)" pass "present" "" ||
+        _emit_check "/opt/ghidra (for ghidriff)" fail "" "missing (ghidriff needs a Ghidra install)" || true
+    [[ -d /opt/ghidra/Ghidra/Extensions/BinExport ]] &&
+        _emit_check "Ghidra BinExport plugin" pass "present" "" ||
+        _emit_check "Ghidra BinExport plugin" fail "" "missing (needed for BinDiff)" || true
+}
+
+_check_isos() {
+    # ISOs are downloaded by `install` mode (unless WINFORGE_SKIP_ISO_DOWNLOAD=1),
+    # so missing here is informational only — don't bump the fail tally.
+    local f
+    for f in "$WIN_ISO_NAME" "$VIRTIO_ISO_NAME"; do
+        if [[ -f "$IMAGES_DIR/$f" ]]; then
+            _emit_check "ISO: $f" pass "present" "" || true
         else
-            warn "missing"
-            fail=1
+            _emit_check "ISO: $f" fail "" \
+                "missing (install mode will download unless WINFORGE_SKIP_ISO_DOWNLOAD=1)" || true
         fi
     done
+}
 
-    for p in "${PIPX_PKGS[@]}"; do
-        printf '  %-40s ' "pipx: $p:"
-        if command -v "$p" >/dev/null 2>&1; then
-            ok "installed"
-        else
-            warn "missing"
-            fail=1
-        fi
+_user_in_group() {
+    # _user_in_group <user> <group>
+    id -nG "$1" 2>/dev/null | tr ' ' '\n' | grep -qx "$2"
+}
+
+_libvirt_default_net_active() {
+    "${SUDO[@]}" virsh net-info default >/dev/null 2>&1 &&
+        [[ "$("${SUDO[@]}" virsh net-info default 2>/dev/null | awk '/^Active:/ {print $2}')" == "yes" ]]
+}
+
+_check_libvirt_runtime() {
+    # libvirt-side runtime state that install_mode is responsible for:
+    # user groups, libvirtd service, default network, libvirt-qemu home
+    # ACL. Each is required (fail bumps the tally).
+    local fail=0 status
+
+    for grp in libvirt kvm; do
+        _user_in_group "$TARGET_USER" "$grp" && status=pass || status=fail
+        _emit_check "group: $grp ($TARGET_USER)" "$status" "yes" "no" || fail=1
     done
 
-    printf '  %-40s ' "/opt/ghidra (for ghidriff):"
-    if [[ -d /opt/ghidra ]]; then ok "present"; else warn "missing (ghidriff needs a Ghidra install)"; fi
+    systemctl is-active --quiet libvirtd 2>/dev/null && status=pass || status=fail
+    _emit_check "libvirtd service" "$status" "active" "inactive" || fail=1
 
-    printf '  %-40s ' "Ghidra BinExport plugin:"
-    if [[ -d /opt/ghidra/Ghidra/Extensions/BinExport ]]; then ok "present"; else warn "missing (needed for BinDiff)"; fi
-
-    printf '  %-40s ' "ISO: $WIN_ISO_NAME:"
-    if [[ -f "$IMAGES_DIR/$WIN_ISO_NAME" ]]; then ok "present"; else warn "missing (install mode will download unless WINFORGE_SKIP_ISO_DOWNLOAD=1)"; fi
-
-    printf '  %-40s ' "ISO: $VIRTIO_ISO_NAME:"
-    if [[ -f "$IMAGES_DIR/$VIRTIO_ISO_NAME" ]]; then ok "present"; else warn "missing (install mode will download unless WINFORGE_SKIP_ISO_DOWNLOAD=1)"; fi
-
-    printf '  %-40s ' "group: libvirt ($TARGET_USER):"
-    if id -nG "$TARGET_USER" 2>/dev/null | tr ' ' '\n' | grep -qx libvirt; then ok "yes"; else
-        warn "no"
-        fail=1
-    fi
-
-    printf '  %-40s ' "group: kvm ($TARGET_USER):"
-    if id -nG "$TARGET_USER" 2>/dev/null | tr ' ' '\n' | grep -qx kvm; then ok "yes"; else
-        warn "no"
-        fail=1
-    fi
-
-    printf '  %-40s ' "libvirtd service:"
-    if systemctl is-active --quiet libvirtd 2>/dev/null; then ok "active"; else
-        warn "inactive"
-        fail=1
-    fi
-
-    printf '  %-40s ' "libvirt default network:"
-    if "${SUDO[@]}" virsh net-info default >/dev/null 2>&1 &&
-        [[ "$("${SUDO[@]}" virsh net-info default 2>/dev/null | awk '/^Active:/ {print $2}')" == "yes" ]]; then
-        ok "active"
-    else
-        warn "inactive or missing"
-        fail=1
-    fi
+    _libvirt_default_net_active && status=pass || status=fail
+    _emit_check "libvirt default network" "$status" "active" "inactive or missing" || fail=1
 
     local target_home
     target_home="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
-    printf '  %-40s ' "libvirt-qemu ACL on $target_home:"
     if [[ -n "$target_home" && -d "$target_home" ]] &&
         getfacl --absolute-names "$target_home" 2>/dev/null | grep -qE '^user:libvirt-qemu:.*x'; then
-        ok "traverse granted"
+        status=pass
     else
-        warn "missing (VM image access will fail)"
-        fail=1
+        status=fail
     fi
+    _emit_check "libvirt-qemu ACL on $target_home" "$status" \
+        "traverse granted" "missing (VM image access will fail)" || fail=1
+
+    return $fail
+}
+
+check_mode() {
+    # Orchestrator: walk every dependency category, accumulate the fail
+    # bit, exit non-zero if any required check failed. The per-category
+    # helpers above are responsible for both the formatting and the
+    # required-vs-optional gating.
+    local fail=0 status
+
+    [[ -e /dev/kvm ]] && status=pass || status=fail
+    _emit_check "/dev/kvm" "$status" "present" "missing (enable VT-x/AMD-V)" || fail=1
+
+    _check_packages "apt" "${APT_PKGS[@]}" || fail=1
+    _check_packages "pipx" "${PIPX_PKGS[@]}" || fail=1
+
+    _check_ghidra_artifacts
+    _check_isos
+
+    _check_libvirt_runtime || fail=1
 
     return $fail
 }

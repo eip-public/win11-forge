@@ -276,6 +276,9 @@ break the next stage's inputs.
 #                        packages.
 #   - shfmt v3.13.1      bash formatter; canonical flags are `-i 4 -ci`
 #                        (4-space indent, indented switch-case arms).
+#   - lizard 1.17        bash cyclomatic-complexity cap at CCN 12
+#                        (matches ruff's [tool.ruff.lint.mccabe]
+#                        max-complexity for Python).
 # Use the portable -print0 | xargs -0 form so this works in bash 3.2
 # (macOS default) and zsh too — no `mapfile`.
 SH_FILES_FIND=( -name '*.sh'
@@ -283,6 +286,9 @@ SH_FILES_FIND=( -name '*.sh'
     -not -path './lab/*' )
 find . "${SH_FILES_FIND[@]}" -print0 | xargs -0 shellcheck -x -S warning
 find . "${SH_FILES_FIND[@]}" -print0 | xargs -0 shfmt -i 4 -ci -d
+lizard --languages bash -C 12 -L 1000 \
+    install-deps.sh setup.sh \
+    vm-setup/*.sh vm-setup/backend/*.sh vm-setup/lib/*.sh
 ruff check
 ruff format --check
 mypy        # static type check; install with: pip install 'mypy==1.20.*'

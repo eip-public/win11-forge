@@ -242,6 +242,53 @@ _vmware_ensure_gold_snapshot() {
 #   - Graceful shutdown via SSH.
 #   - Touch marker so subsequent _vmware_ensure_gold_snapshot calls
 #     don't redo this (~10 min).
+# Wait for a freshly-booted gold VMware VM to acquire a DHCP lease and
+# open port 22. Discovers the lease via vmnet8's dhcpd.leases file
+# (arp doesn't populate until the host initiates traffic; the lease
+# row appears the moment the DHCP handshake completes).
+#
+# Echoes the discovered IP on stdout (so the caller can capture it
+# with `gold_ip="$(_vmware_wait_for_gold_ssh)"`); returns non-zero if
+# SSH never came up within `_VMWARE_BOOT_MAX_WAIT_S` seconds.
+_VMWARE_BOOT_MAX_WAIT_S=1800
+_VMWARE_BOOT_POLL_S=15
+_vmware_wait_for_gold_ssh() {
+    local leases=/etc/vmware/vmnet8/dhcpd/dhcpd.leases
+    echo "[*] Waiting for gold DHCP lease + sshd (up to $((_VMWARE_BOOT_MAX_WAIT_S / 60)) min, first VMware boot is slow)" >&2
+    local elapsed=0 gold_mac="" gold_ip=""
+    while ((elapsed < _VMWARE_BOOT_MAX_WAIT_S)); do
+        sleep "$_VMWARE_BOOT_POLL_S"
+        elapsed=$((elapsed + _VMWARE_BOOT_POLL_S))
+
+        # MAC: vmrun writes ethernet0.generatedAddress into the .vmx on first start.
+        if [[ -z "$gold_mac" ]]; then
+            gold_mac=$(awk -F'"' '/^ethernet0\.(generatedAddress|address)[[:space:]]/{print tolower($2); exit}' "$GOLD_VMX")
+        fi
+
+        # IP: scan the leases file for the most recent entry matching our MAC.
+        if [[ -n "$gold_mac" && -z "$gold_ip" ]]; then
+            gold_ip=$(sudo -n awk -v mac="$gold_mac" '
+                /^lease /{ip=$2}
+                /hardware ethernet/{m=tolower($3); gsub(/;/,"",m); if (m==mac) hit=ip}
+                END{print hit}
+            ' "$leases" 2>/dev/null)
+        fi
+
+        if [[ -n "$gold_ip" ]] && timeout 5 bash -c "</dev/tcp/$gold_ip/22" 2>/dev/null; then
+            echo "[+] gold reachable at $gold_ip (MAC $gold_mac) after ${elapsed}s" >&2
+            printf '%s' "$gold_ip"
+            return 0
+        fi
+        if ((elapsed % 60 == 0)); then
+            echo "  t+${elapsed}s: mac=${gold_mac:-?} ip=${gold_ip:-?} port22=closed" >&2
+        fi
+    done
+
+    echo "[-] gold never reached SSH on a valid IP within ${_VMWARE_BOOT_MAX_WAIT_S}s" >&2
+    echo "    last seen: mac=$gold_mac ip=$gold_ip" >&2
+    return 1
+}
+
 _vmware_install_tools_in_gold() {
     local marker="$VMWARE_DIR/${VM_NAME}-gold/.tools-installed"
     if [[ -f "$marker" ]]; then
@@ -272,46 +319,14 @@ _vmware_install_tools_in_gold() {
     sudo -n umount "$mnt"
     rmdir "$mnt"
 
-    # Boot the gold.
+    # Boot the gold and wait for DHCP + sshd. First boot of a KVM-built
+    # image on VMware can take 15+ min (Windows reconfigures drivers,
+    # sshd starts late). See _vmware_wait_for_gold_ssh.
     echo "[*] Booting gold under VMware (nogui)"
     vmrun -T ws start "$GOLD_VMX" nogui >/dev/null
 
-    # Wait for boot + DHCP + sshd. First boot of a KVM-built image on
-    # VMware can take 15+ min (Windows reconfigures drivers for the new
-    # hypervisor, sshd starts late). Discover the IP via vmnet8's
-    # dhcpd.leases file rather than `arp` — arp only populates after
-    # the host initiates traffic, but the lease shows up the moment the
-    # guest's DHCP handshake completes.
-    local leases=/etc/vmware/vmnet8/dhcpd/dhcpd.leases
-    echo "[*] Waiting for gold DHCP lease + sshd (up to 30 min, first VMware boot is slow)"
-    local elapsed=0 max_wait=1800 gold_mac="" gold_ip=""
-    while ((elapsed < max_wait)); do
-        sleep 15
-        elapsed=$((elapsed + 15))
-        # MAC: vmrun writes ethernet0.generatedAddress into the .vmx on first start.
-        if [[ -z "$gold_mac" ]]; then
-            gold_mac=$(awk -F'"' '/^ethernet0\.(generatedAddress|address)[[:space:]]/{print tolower($2); exit}' "$GOLD_VMX")
-        fi
-        if [[ -n "$gold_mac" && -z "$gold_ip" ]]; then
-            # awk over leases: track current lease's IP, when we see the
-            # matching MAC, emit. Keep the last (most recent) match.
-            gold_ip=$(sudo -n awk -v mac="$gold_mac" '
-                /^lease /{ip=$2}
-                /hardware ethernet/{m=tolower($3); gsub(/;/,"",m); if (m==mac) hit=ip}
-                END{print hit}
-            ' "$leases" 2>/dev/null)
-        fi
-        if [[ -n "$gold_ip" ]] && timeout 5 bash -c "</dev/tcp/$gold_ip/22" 2>/dev/null; then
-            echo "[+] gold reachable at $gold_ip (MAC $gold_mac) after ${elapsed}s"
-            break
-        fi
-        if ((elapsed % 60 == 0)); then
-            echo "  t+${elapsed}s: mac=${gold_mac:-?} ip=${gold_ip:-?} port22=closed"
-        fi
-    done
-    if [[ -z "$gold_ip" ]] || ! timeout 5 bash -c "</dev/tcp/$gold_ip/22" 2>/dev/null; then
-        echo "[-] gold never reached SSH on a valid IP within ${max_wait}s" >&2
-        echo "    last seen: mac=$gold_mac ip=$gold_ip" >&2
+    local gold_ip
+    if ! gold_ip="$(_vmware_wait_for_gold_ssh)"; then
         vmrun -T ws stop "$GOLD_VMX" hard >/dev/null 2>&1 || true
         rm -rf "$stage"
         return 1
