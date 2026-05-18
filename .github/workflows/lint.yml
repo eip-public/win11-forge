@@ -121,20 +121,22 @@ jobs:
       - name: lizard (bash CCN cap)
         # -C 12 — fail on any function with cyclomatic complexity > 12.
         #         Matches Python's [tool.ruff.lint.mccabe] max-complexity.
-        # -L 1000 — file-length cap; lab/ and third-party/ are excluded
-        #         by --exclude so legitimate large config files don't
-        #         trip the cap.
+        # -L 1000 — function-length cap; lab/ and third-party/ are
+        #         excluded by path so legitimate large config files
+        #         don't trip the cap.
         # The full lizard table is printed for visibility; non-zero
         # exit on any threshold breach fails CI.
+        #
+        # Scope uses the same find ... '*.sh' pattern as shellcheck
+        # and shfmt above so any newly-added bash script — including
+        # ones at the repo root (e.g. check-file-sizes.sh) — is
+        # automatically picked up without touching this workflow.
         run: |
-          lizard \
-            --languages bash \
-            -C 12 \
-            -L 1000 \
-            install-deps.sh setup.sh \
-            vm-setup/*.sh \
-            vm-setup/backend/*.sh \
-            vm-setup/lib/*.sh
+          find . -name '*.sh' \
+            -not -path './vm-setup/third-party/*' \
+            -not -path './lab/*' \
+            -not -path './.git/*' \
+            -print0 | xargs -0 lizard --languages bash -C 12 -L 1000
 
   mypy:
     name: mypy

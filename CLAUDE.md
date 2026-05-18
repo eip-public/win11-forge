@@ -286,9 +286,7 @@ SH_FILES_FIND=( -name '*.sh'
     -not -path './lab/*' )
 find . "${SH_FILES_FIND[@]}" -print0 | xargs -0 shellcheck -x -S warning
 find . "${SH_FILES_FIND[@]}" -print0 | xargs -0 shfmt -i 4 -ci -d
-lizard --languages bash -C 12 -L 1000 \
-    install-deps.sh setup.sh \
-    vm-setup/*.sh vm-setup/backend/*.sh vm-setup/lib/*.sh
+find . "${SH_FILES_FIND[@]}" -print0 | xargs -0 lizard --languages bash -C 12 -L 1000
 ruff check
 ruff format --check
 mypy        # static type check; install with: pip install 'mypy==1.20.*'
