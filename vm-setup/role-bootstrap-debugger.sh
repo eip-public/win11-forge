@@ -39,8 +39,7 @@ scp_to() {
 }
 
 retry_ssh_cmd() {
-    local attempt
-    for attempt in $(seq 1 12); do
+    for _ in $(seq 1 12); do
         ssh_cmd "$@" && return 0
         sleep 5
     done
@@ -48,8 +47,8 @@ retry_ssh_cmd() {
 }
 
 retry_scp_to() {
-    local src="$1" dst="$2" attempt
-    for attempt in $(seq 1 12); do
+    local src="$1" dst="$2"
+    for _ in $(seq 1 12); do
         scp_to "$src" "$dst" && return 0
         sleep 5
     done
@@ -102,8 +101,8 @@ wait_for_ssh() {
 # For long-running actions, Status=Running and Last Result=267009 (0x41301
 # SCHED_S_TASK_RUNNING) is the healthy state.
 verify_schtask_running() {
-    local task="$1" max="${2:-10}" i status
-    for i in $(seq 1 "$max"); do
+    local task="$1" max="${2:-10}" status
+    for _ in $(seq 1 "$max"); do
         # `|| true` on the assignment: under set -euo pipefail an ssh failure
         # inside $(...) would otherwise kill the caller before this loop's
         # retry/timeout branch can run.
@@ -196,7 +195,7 @@ verify_schtask_running DebuggerDesktopBoot
 # Wait for HTTP up then configure via API
 echo "[*] Waiting for DesktopCommander MCP on :8201..."
 status=""
-for i in $(seq 1 20); do
+for _ in $(seq 1 20); do
     status=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 \
         -X POST "http://$VM_IP:8201/mcp" \
         -H "Content-Type: application/json" \
@@ -210,6 +209,8 @@ done
 if [[ "$status" == "200" ]]; then
     # shellcheck source=lib/dc-helpers.sh
     . "$SCRIPT_DIR/lib/dc-helpers.sh"
+    # DC_URL is consumed by dc_init / dc_set in dc-helpers.sh
+    # shellcheck disable=SC2034
     DC_URL="http://$VM_IP:8201/mcp"
     dc_init
     dc_set "blockedCommands"    "[]"

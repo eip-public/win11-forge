@@ -21,7 +21,6 @@ import argparse
 import logging
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -59,7 +58,7 @@ def main() -> int:
     log.info("  Node: %s", NODE)
     log.info("  DCMCP: %s", DCMCP)
 
-    from fastmcp import FastMCP, Client
+    from fastmcp import Client, FastMCP
     from fastmcp.client.transports import NodeStdioTransport
 
     # NodeStdioTransport spawns: node <script_path>
@@ -115,10 +114,15 @@ def main() -> int:
                 "script_path": str(ps1),
             }
         except subprocess.TimeoutExpired as e:
+            def _decode(stream: object) -> str:
+                if isinstance(stream, bytes):
+                    return stream.decode("utf-8", "replace")
+                return stream or ""
+
             return {
                 "exit_code": -1,
-                "stdout": (e.stdout or b"").decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or ""),
-                "stderr": (e.stderr or b"").decode("utf-8", "replace") if isinstance(e.stderr, bytes) else (e.stderr or ""),
+                "stdout": _decode(e.stdout),
+                "stderr": _decode(e.stderr),
                 "timed_out": True,
                 "elapsed_s": round(time.monotonic() - start, 3),
                 "script_path": str(ps1),

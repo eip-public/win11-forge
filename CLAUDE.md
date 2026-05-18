@@ -260,7 +260,22 @@ break the next stage's inputs.
 ## Validation before commit
 
 ```bash
-shellcheck install-deps.sh setup.sh         # primary entry points
+# Lint — also runs in CI (.github/workflows/lint.yml). Config:
+#   - .shellcheckrc      empty of rule suppressions; SC1091 and
+#                        SC2148 are handled by narrowly-scoped
+#                        annotations (`# shellcheck source=...`
+#                        and `# shellcheck shell=bash`) at the
+#                        call sites.
+#   - pyproject.toml     [tool.ruff] target-version, rule selection,
+#                        per-file ignores; excludes vm-setup/third-party
+#                        and lab/.
+# Use the portable -print0 | xargs -0 form so this works in bash 3.2
+# (macOS default) and zsh too — no `mapfile`.
+find . -name '*.sh' \
+    -not -path './vm-setup/third-party/*' -not -path './lab/*' \
+    -print0 | xargs -0 shellcheck -x -S warning
+ruff check
+
 bats tests/bootstrap-readiness.bats         # gold-image readiness
 bats tests/kvm-backend.bats                 # KVM lab lifecycle
 bats tests/vmware-backend.bats              # VMware lab lifecycle

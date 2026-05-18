@@ -96,8 +96,10 @@ def _stop(proc: subprocess.Popen | None, name: str) -> None:
         proc.terminate()
         proc.wait(timeout=10)
     except Exception:
-        try: proc.kill()
-        except Exception: pass
+        try:
+            proc.kill()
+        except Exception:
+            pass
 
 
 def _pipe_exists() -> bool:
@@ -111,8 +113,10 @@ def _kd_log_path() -> str:
 def _start_kd(cycle: int) -> subprocess.Popen:
     global _kd_log_fh
     if _kd_log_fh:
-        try: _kd_log_fh.close()
-        except Exception: pass
+        try:
+            _kd_log_fh.close()
+        except Exception:
+            pass
     _kd_log_fh = open(_kd_log_path(), "a", encoding="utf-8", errors="replace")
     log.info(f"[cycle {cycle}] Starting kd.exe: kd -k {TRANSPORT}")
     # No -b (avoids early-boot KDNET timing freeze) and no -c (fires once only).
@@ -148,8 +152,10 @@ def _start_http() -> subprocess.Popen | None:
         # monitor at line 184. Close on both success and failure paths.
         for fh in (out, err):
             if fh is not None:
-                try: fh.close()
-                except Exception: pass
+                try:
+                    fh.close()
+                except Exception:
+                    pass
 
 
 def _wait_for_kd_connect(proc: subprocess.Popen, cycle: int) -> bool:
@@ -163,7 +169,7 @@ def _wait_for_kd_connect(proc: subprocess.Popen, cycle: int) -> bool:
         try:
             sz = os.path.getsize(_kd_log_path())
             if sz > last_size:
-                with open(_kd_log_path(), "r", encoding="utf-8", errors="replace") as f:
+                with open(_kd_log_path(), encoding="utf-8", errors="replace") as f:
                     content = f.read()
                 # kd outputs different strings depending on whether this is a fresh
                 # connection or a reconnect after target reboot:
@@ -219,7 +225,7 @@ def _prompt_monitor(proc: subprocess.Popen, cycle: int, pipe_ready_event: thread
 
     log_path = _kd_log_path()
     try:
-        log_fh = open(log_path, "r", encoding="utf-8", errors="replace")
+        log_fh = open(log_path, encoding="utf-8", errors="replace")
     except OSError:
         log_fh = None
 
@@ -230,7 +236,7 @@ def _prompt_monitor(proc: subprocess.Popen, cycle: int, pipe_ready_event: thread
         while not _shutdown.is_set() and proc.poll() is None:
             if log_fh is None:
                 try:
-                    log_fh = open(log_path, "r", encoding="utf-8", errors="replace")
+                    log_fh = open(log_path, encoding="utf-8", errors="replace")
                 except OSError:
                     time.sleep(1)
                     continue
@@ -272,7 +278,10 @@ def _prompt_monitor(proc: subprocess.Popen, cycle: int, pipe_ready_event: thread
                         send(f".load {DLL}", delay=2)
                         send("mcpstart", delay=2)
                         if hold:
-                            log.info(f"[cycle {cycle}] Hold flag present — extension loaded, leaving target at break")
+                            log.info(
+                                f"[cycle {cycle}] Hold flag present — extension loaded, "
+                                "leaving target at break"
+                            )
                         else:
                             send("g", delay=1)
                         injected = True
@@ -280,7 +289,10 @@ def _prompt_monitor(proc: subprocess.Popen, cycle: int, pipe_ready_event: thread
                     else:
                         # No MCP or already tried - just resume (unless held)
                         if hold:
-                            log.info(f"[cycle {cycle}] Hold flag present — leaving target at break (fallback)")
+                            log.info(
+                                f"[cycle {cycle}] Hold flag present — "
+                                "leaving target at break (fallback)"
+                            )
                         else:
                             send("g")
 
@@ -294,8 +306,10 @@ def _prompt_monitor(proc: subprocess.Popen, cycle: int, pipe_ready_event: thread
             time.sleep(0.5)
     finally:
         if log_fh is not None:
-            try: log_fh.close()
-            except Exception: pass
+            try:
+                log_fh.close()
+            except Exception:
+                pass
 
     log.info(f"[cycle {cycle}] Prompt monitor stopped")
 
@@ -307,7 +321,8 @@ def run() -> None:
     cycle = 0
 
     if not os.path.isfile(KD):
-        log.error(f"kd.exe not found: {KD}"); sys.exit(1)
+        log.error(f"kd.exe not found: {KD}")
+        sys.exit(1)
 
     log.info("Supervisor starting")
     log.info(f"  KDNET: {TRANSPORT}")
@@ -319,8 +334,10 @@ def run() -> None:
         cycle += 1
         log.info(f"=== Cycle {cycle} starting ===")
 
-        _stop(_http_proc, "HTTP server"); _http_proc = None
-        _stop(_kd_proc, "kd.exe");       _kd_proc = None
+        _stop(_http_proc, "HTTP server")
+        _http_proc = None
+        _stop(_kd_proc, "kd.exe")
+        _kd_proc = None
         time.sleep(KD_RESTART_DELAY)
 
         _kd_proc = _start_kd(cycle)
@@ -351,8 +368,13 @@ def run() -> None:
                     log.info(f"[cycle {cycle}] HTTP server pid: {_http_proc.pid}")
                     log.info(f"[cycle {cycle}] MCP endpoint: http://0.0.0.0:{HTTP_PORT}/mcp")
         else:
-            log.info(f"[cycle {cycle}] No pipe yet - waiting for first break to load extension")
-            log.info(f"[cycle {cycle}] Trigger: run a PoC (crash) or './setup.sh lab load-mcp' (NtSystemDebugControl)")
+            log.info(
+                f"[cycle {cycle}] No pipe yet - waiting for first break to load extension"
+            )
+            log.info(
+                f"[cycle {cycle}] Trigger: run a PoC (crash) "
+                "or './setup.sh lab load-mcp' (NtSystemDebugControl)"
+            )
 
         # Monitor until kd exits
         log.info(f"[cycle {cycle}] Monitoring kd.exe (stdin held open)...")
@@ -384,7 +406,11 @@ def run() -> None:
                     _http_proc = None
 
             if _kd_proc.poll() is not None:
-                log.warning(f"[cycle {cycle}] kd.exe exited (code={_kd_proc.returncode}/0x{_kd_proc.returncode & 0xFFFFFFFF:08X})")
+                rc = _kd_proc.returncode
+                log.warning(
+                    f"[cycle {cycle}] kd.exe exited "
+                    f"(code={rc}/0x{rc & 0xFFFFFFFF:08X})"
+                )
                 log.info(f"[cycle {cycle}] Target likely BSODed - restarting for next crash")
                 break
 

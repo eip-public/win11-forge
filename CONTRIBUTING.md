@@ -102,12 +102,30 @@ bats tests/vmware-backend.bats          # VMware lab lifecycle
 bats tests/lab-lifecycle.bats           # backend-agnostic checks
 ```
 
-If you change anything user-facing in `install-deps.sh` or `setup.sh`,
-also run:
+## Linting
+
+The repo lints both bash and Python on every push/PR via
+`.github/workflows/lint.yml`. Run the same checks locally before
+opening a PR:
 
 ```bash
-shellcheck install-deps.sh setup.sh
+# Bash — install-deps.sh, setup.sh, vm-setup/**/*.sh
+# `-x` makes shellcheck follow `source` / `.` directives so the
+# lib/ helpers are checked in the context that uses them.
+# Portable across bash 3.2 (macOS default) and zsh — no `mapfile`.
+find . -name '*.sh' \
+    -not -path './vm-setup/third-party/*' \
+    -not -path './lab/*' \
+    -print0 | xargs -0 shellcheck -x -S warning
+
+# Python — vm-setup/*.py, vm-setup/lib/*.py
+# Rule set, per-file ignores, and target-version live in pyproject.toml.
+ruff check
 ```
+
+Both linters must pass cleanly on the project's in-scope files. The
+`vm-setup/third-party/` tree (vendored upstream) and `lab/` (per-CVE
+scratch code) are excluded by configuration.
 
 ## Lab work in `lab/`
 

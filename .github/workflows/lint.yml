@@ -1,0 +1,59 @@
+name: lint
+
+# Runs the repo-level linters on every push and pull request.
+#   - shellcheck on bash scripts (install-deps.sh, setup.sh, vm-setup/**/*.sh)
+#   - ruff on Python helpers   (vm-setup/*.py, vm-setup/lib/*.py)
+# Config lives in .shellcheckrc and pyproject.toml at repo root.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck
+        # -x follows `source` / `.` so library files in vm-setup/lib are
+        # checked in the context of the script that includes them.
+        # -S warning fails the job on warnings and errors but ignores
+        # info-level style nits.
+        # vm-setup/third-party/ is vendored upstream code; lab/ holds
+        # per-CVE PoC scratch and is excluded by policy.
+        # Use -print0 | xargs -0 (no `mapfile`) so the same one-liner
+        # in CONTRIBUTING.md works on bash 3.2 (macOS) and zsh too.
+        run: |
+          find . -name '*.sh' \
+            -not -path './vm-setup/third-party/*' \
+            -not -path './lab/*' \
+            -not -path './.git/*' \
+            -print0 | xargs -0 shellcheck -x -S warning
+
+  ruff:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install --no-cache-dir 'ruff==0.15.*'
+
+      - name: ruff check
+        # Config (target-version, line-length, rule selection, per-file
+        # ignores) lives in pyproject.toml at the repo root.
+        run: ruff check

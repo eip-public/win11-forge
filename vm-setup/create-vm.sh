@@ -188,6 +188,12 @@ echo "[*] Launching VM..."
 if [[ "$IS_VHD" == "true" ]]; then
   # VHDs from Microsoft are MBR (legacy BIOS), not UEFI
   VIRT_INSTALL_LOG=$(mktemp)
+  # SC2024: the `sudo virt-install ... >"$VIRT_INSTALL_LOG"` redirect
+  # is opened by the *outer* shell (the unprivileged user), and
+  # $VIRT_INSTALL_LOG is in /tmp via mktemp, so it is writable by the
+  # user. virt-install just inherits the fd. Capturing virt-install's
+  # output via `sudo tee` would change exit-code propagation.
+  # shellcheck disable=SC2024
   if ! sudo virt-install \
     --check path_in_use=off \
     --name "$VM_NAME" \
@@ -232,6 +238,7 @@ if [[ "$IS_VHD" == "true" ]]; then
   echo ""
 else
   VIRT_INSTALL_LOG=$(mktemp)
+  # shellcheck disable=SC2024  # see annotation above; same pattern
   if ! sudo virt-install \
     --check path_in_use=off \
     --name "$VM_NAME" \

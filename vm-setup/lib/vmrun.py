@@ -301,11 +301,13 @@ def _cli():
 
     if args.cmd == "exec":
         if not guest_argv:
-            sys.stderr.write("exec needs argv (after `--`)\n"); sys.exit(2)
+            sys.stderr.write("exec needs argv (after `--`)\n")
+            sys.exit(2)
         try:
             r = v.exec_wait(guest_argv, timeout=args.timeout)
         except VmrunError as e:
-            sys.stderr.write(f"vmrun: {e}\n"); sys.exit(125)
+            sys.stderr.write(f"vmrun: {e}\n")
+            sys.exit(125)
         sys.stdout.write(r.stdout)
         sys.stderr.write(r.stderr)
         sys.exit(r.rc if not r.timed_out else 124)
@@ -315,7 +317,8 @@ def _cli():
         try:
             r = v.run_powershell(script, timeout=args.timeout)
         except VmrunError as e:
-            sys.stderr.write(f"vmrun: {e}\n"); sys.exit(125)
+            sys.stderr.write(f"vmrun: {e}\n")
+            sys.exit(125)
         sys.stdout.write(r.stdout)
         sys.stderr.write(r.stderr)
         sys.exit(r.rc if not r.timed_out else 124)

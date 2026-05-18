@@ -1,0 +1,69 @@
+# Repo-level Python tooling config.
+#
+# Scope: the host/guest helper scripts that ship as part of win11-forge
+# itself — `vm-setup/*.py` and `vm-setup/lib/*.py`. These are the agent-
+# and operator-facing entry points (kd_wrapper, target_mcp_http,
+# windbg_mcp_http, qga, vmrun, set-disk-source).
+#
+# Out of scope (excluded below):
+#   - vm-setup/third-party/    vendored upstream forks; lint them upstream
+#   - lab/                     per-CVE PoCs; intentionally rough scratch code
+#   - **/__pycache__/          generated
+#
+# The gold image ships system Python 3.x (3.10+ on 24H2). Target the
+# oldest version we still expect to run on so we don't accidentally
+# introduce 3.12-only syntax that breaks a guest. Bump as the gold
+# image's bundled Python moves forward.
+
+[tool.ruff]
+target-version = "py310"
+line-length = 110
+extend-exclude = [
+    "vm-setup/third-party",
+    "lab",
+    "**/__pycache__",
+]
+
+[tool.ruff.lint]
+# Curated rule sets:
+#   E,W  pycodestyle errors/warnings (excluding line-length nits)
+#   F    pyflakes (unused imports, undefined names, etc.)
+#   I    isort import ordering
+#   B    flake8-bugbear (likely bugs)
+#   UP   pyupgrade (modern Python idioms)
+#   SIM  flake8-simplify (collapsible conditionals)
+#   RUF  ruff-specific rules
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = [
+    # We use `except Exception:` deliberately around cleanup paths (kd.exe
+    # supervisor, MCP shim) where any exception means "drop this resource
+    # and move on". Narrowing here would obscure intent.
+    "BLE001",
+    # subprocess with shell=False but partial-path executable — the
+    # guest scripts intentionally hard-code Windows paths (kd.exe,
+    # node.exe) and adding shell=True would be worse.
+    "S603", "S607",
+    # f-string in logging — readable and the perf cost is irrelevant
+    # for the volumes these scripts log at.
+    "G004",
+    # try/except/pass for cleanup is more readable than
+    # contextlib.suppress in tight cleanup blocks (kd.exe shutdown,
+    # log handle flush). The intent is "best-effort close, never raise".
+    "SIM105",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# kd_wrapper.py is a long-lived SYSTEM supervisor that intentionally
+# holds file handles open across the supervisor loop iterations
+# (_kd_log_fh is a module global rotated by _start_kd). A `with`
+# block would force a structural rewrite to no benefit, so SIM115
+# (use a context manager) does not apply here.
+"vm-setup/kd_wrapper.py" = ["SIM115"]
+# vmrun.py / qga.py are thin CLI wrappers around host binaries; their
+# `_cli` dispatchers legitimately use sys.exit at many call sites.
+"vm-setup/lib/vmrun.py" = ["B008"]
+"vm-setup/lib/qga.py" = ["B008"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

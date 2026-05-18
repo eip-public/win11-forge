@@ -98,4 +98,9 @@ mkdir -p "$IMAGES_DIR" "$ISOS_DIR"
 rmdir "$ISOS_DIR" 2>/dev/null || true
 
 ok "ISO staging done"
-ls -lh "$IMAGES_DIR" | grep -E '\.iso$' || true
+shopt -s nullglob
+iso_files=("$IMAGES_DIR"/*.iso)
+shopt -u nullglob
+if (( ${#iso_files[@]} > 0 )); then
+    ls -lh "${iso_files[@]}"
+fi

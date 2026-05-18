@@ -22,10 +22,10 @@ from pathlib import Path
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "mcp_server"))
 
+from config import LOG_FORMAT, LOG_LEVEL, load_environment_config  # noqa: E402
+from core.server_initialization import InitializationConfig, ServerInitializer  # noqa: E402
 from fastmcp import FastMCP  # noqa: E402
-from config import load_environment_config, LOG_LEVEL, LOG_FORMAT  # noqa: E402
 from tools import register_all_tools  # noqa: E402
-from core.server_initialization import ServerInitializer, InitializationConfig  # noqa: E402
 
 
 def main() -> int:

@@ -126,13 +126,13 @@ install_binexport_plugin() {
     fi
 
     if [[ -z "$binexport_zip" ]]; then
-        ${SUDO[@]} install -d -m 0755 "$(dirname "$BINEXPORT_CACHE")"
+        "${SUDO[@]}" install -d -m 0755 "$(dirname "$BINEXPORT_CACHE")"
         if [[ ! -s "$BINEXPORT_CACHE" ]]; then
             local tmp
             tmp="$(mktemp)"
             log "Downloading BinExport Ghidra plugin from $BINEXPORT_URL"
             if curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "$BINEXPORT_URL" -o "$tmp"; then
-                ${SUDO[@]} install -m 0644 "$tmp" "$BINEXPORT_CACHE"
+                "${SUDO[@]}" install -m 0644 "$tmp" "$BINEXPORT_CACHE"
             else
                 rm -f "$tmp"
                 warn "BinExport download failed; set BINEXPORT_ZIP=/path/to/BinExport_Ghidra-Java.zip and re-run"
@@ -156,11 +156,11 @@ install_binexport_plugin() {
     # ghidra_*_BinExport.zip extension archive. Local BINEXPORT_ZIP overrides may
     # point to either the wrapper or the inner extension zip.
     if [[ -d "$tmp_extract/BinExport" ]]; then
-        ${SUDO[@]} cp -a "$tmp_extract/BinExport" /opt/ghidra/Ghidra/Extensions/
+        "${SUDO[@]}" cp -a "$tmp_extract/BinExport" /opt/ghidra/Ghidra/Extensions/
     else
         nested_zip="$(find "$tmp_extract" -maxdepth 1 -type f -iname '*BinExport*.zip' -print -quit)"
         if [[ -n "$nested_zip" ]]; then
-            ${SUDO[@]} unzip -q -o "$nested_zip" -d /opt/ghidra/Ghidra/Extensions/
+            "${SUDO[@]}" unzip -q -o "$nested_zip" -d /opt/ghidra/Ghidra/Extensions/
         else
             warn "BinExport archive did not contain BinExport/ or a nested BinExport zip"
         fi
@@ -188,14 +188,14 @@ install_binexport_plugin() {
 # Fix: add 1.1.1.1 + 8.8.8.8 forwarders so the lab subnet's DNS does
 # not depend on the host's systemd-resolved configuration. Idempotent.
 ensure_libvirt_dns_forwarders() {
-    ${SUDO[@]} virsh net-info default >/dev/null 2>&1 || return 0
-    if ${SUDO[@]} virsh net-dumpxml default | grep -q '<forwarder addr='; then
+    "${SUDO[@]}" virsh net-info default >/dev/null 2>&1 || return 0
+    if "${SUDO[@]}" virsh net-dumpxml default | grep -q '<forwarder addr='; then
         ok "libvirt default network already has DNS forwarders"
         return 0
     fi
     log "Adding DNS forwarders (1.1.1.1, 8.8.8.8) to libvirt default network"
     local xml; xml="$(mktemp)"
-    ${SUDO[@]} virsh net-dumpxml default > "$xml"
+    "${SUDO[@]}" virsh net-dumpxml default > "$xml"
     python3 - "$xml" <<'PY'
 import sys, xml.etree.ElementTree as ET
 path = sys.argv[1]
@@ -214,9 +214,9 @@ PY
     # supported way to swap in a structural change. Domains using the
     # network stay defined; only running guests on the bridge see a
     # momentary blip.
-    ${SUDO[@]} virsh net-destroy default >/dev/null 2>&1 || true
-    ${SUDO[@]} virsh net-define "$xml" >/dev/null
-    ${SUDO[@]} virsh net-start default >/dev/null
+    "${SUDO[@]}" virsh net-destroy default >/dev/null 2>&1 || true
+    "${SUDO[@]}" virsh net-define "$xml" >/dev/null
+    "${SUDO[@]}" virsh net-start default >/dev/null
     rm -f "$xml"
     ok "libvirt default network restarted with DNS forwarders"
 }
@@ -270,8 +270,8 @@ check_mode() {
     if systemctl is-active --quiet libvirtd 2>/dev/null; then ok "active"; else warn "inactive"; fail=1; fi
 
     printf '  %-40s ' "libvirt default network:"
-    if ${SUDO[@]} virsh net-info default >/dev/null 2>&1 && \
-       [[ "$(${SUDO[@]} virsh net-info default 2>/dev/null | awk '/^Active:/ {print $2}')" == "yes" ]]; then
+    if "${SUDO[@]}" virsh net-info default >/dev/null 2>&1 && \
+       [[ "$("${SUDO[@]}" virsh net-info default 2>/dev/null | awk '/^Active:/ {print $2}')" == "yes" ]]; then
         ok "active"
     else
         warn "inactive or missing"
@@ -294,20 +294,20 @@ check_mode() {
 
 install_mode() {
     log "Updating apt index"
-    ${SUDO[@]} apt-get update -qq
+    "${SUDO[@]}" apt-get update -qq
 
     log "Installing packages: ${APT_PKGS[*]}"
-    ${SUDO[@]} env DEBIAN_FRONTEND=noninteractive apt-get install -y "${APT_PKGS[@]}"
+    "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y "${APT_PKGS[@]}"
 
     log "Enabling + starting libvirtd"
-    ${SUDO[@]} systemctl enable --now libvirtd
+    "${SUDO[@]}" systemctl enable --now libvirtd
 
     local group
     local groups_added=()
     for group in libvirt kvm; do
         if ! id -nG "$TARGET_USER" 2>/dev/null | tr ' ' '\n' | grep -qx "$group"; then
             log "Adding $TARGET_USER to group $group"
-            ${SUDO[@]} usermod -aG "$group" "$TARGET_USER"
+            "${SUDO[@]}" usermod -aG "$group" "$TARGET_USER"
             groups_added+=("$group")
         fi
     done
@@ -323,7 +323,7 @@ install_mode() {
     if [[ -n "$target_home" && -d "$target_home" ]] && id libvirt-qemu >/dev/null 2>&1; then
         if ! getfacl --absolute-names "$target_home" 2>/dev/null | grep -qE '^user:libvirt-qemu:.*x'; then
             log "Granting libvirt-qemu traverse ACL on $target_home"
-            ${SUDO[@]} setfacl -m u:libvirt-qemu:x "$target_home"
+            "${SUDO[@]}" setfacl -m u:libvirt-qemu:x "$target_home"
         fi
     fi
 
@@ -331,7 +331,7 @@ install_mode() {
         log "Installing pipx packages system-wide into /opt/pipx: ${PIPX_PKGS[*]}"
         for p in "${PIPX_PKGS[@]}"; do
             if ! command -v "$p" >/dev/null 2>&1; then
-                ${SUDO[@]} env PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install "$p"
+                "${SUDO[@]}" env PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install "$p"
             fi
         done
     fi
@@ -341,12 +341,12 @@ install_mode() {
     ensure_iso_assets
 
     log "Ensuring libvirt default network is up"
-    ${SUDO[@]} virsh net-info default >/dev/null 2>&1 || {
+    "${SUDO[@]}" virsh net-info default >/dev/null 2>&1 || {
         warn "default network missing; libvirt usually ships it — check 'virsh net-list --all'"
     }
-    ${SUDO[@]} virsh net-autostart default 2>/dev/null || true
-    if [[ "$(${SUDO[@]} virsh net-info default 2>/dev/null | awk '/^Active:/ {print $2}')" != "yes" ]]; then
-        ${SUDO[@]} virsh net-start default || warn "could not start default network"
+    "${SUDO[@]}" virsh net-autostart default 2>/dev/null || true
+    if [[ "$("${SUDO[@]}" virsh net-info default 2>/dev/null | awk '/^Active:/ {print $2}')" != "yes" ]]; then
+        "${SUDO[@]}" virsh net-start default || warn "could not start default network"
     fi
 
     ensure_libvirt_dns_forwarders
@@ -390,7 +390,7 @@ vmware_mode() {
     if grep -qF "$marker" "$conf"; then
         ok "Reservations already present in $conf — skipping edit"
     else
-        ${SUDO[@]} tee -a "$conf" >/dev/null <<EOF
+        "${SUDO[@]}" tee -a "$conf" >/dev/null <<EOF
 
 $marker
 host winforge-target {
@@ -406,8 +406,8 @@ EOF
     fi
 
     log "Restarting vmware-networks so dhcpd picks up the new reservations"
-    ${SUDO[@]} vmware-networks --stop >/dev/null 2>&1 || true
-    ${SUDO[@]} vmware-networks --start >/dev/null \
+    "${SUDO[@]}" vmware-networks --stop >/dev/null 2>&1 || true
+    "${SUDO[@]}" vmware-networks --start >/dev/null \
         || die "vmware-networks --start failed"
     ok "vmnet8 dhcpd reloaded"
 

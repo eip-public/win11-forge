@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared status helpers used by win11-forge bash scripts.
 #
 # Only the truly-identical helpers (ok/warn/die) live here. Each script
