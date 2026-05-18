@@ -15,10 +15,17 @@ win11-forge/
 ├── vm-setup/            in-VM setup + lab-host helpers (bash, Python, PowerShell)
 │   ├── backend/         KVM/libvirt vs VMware backend dispatch
 │   ├── lib/             shared helpers sourced by sibling scripts
-│   │                    (ssh/log/virsh/dc options, MACs, defaults, set-disk-source.py)
+│   │                    (ssh/log/virsh/dc options, MACs, defaults, set-disk-source.py,
+│   │                    guest.sh transport dispatch, qga.py + vmrun.py host wrappers)
 │   ├── setup-vm-phases/ gold-build PowerShell phase scripts; launched detached
-│   │                    via launch.ps1 + runner.ps1 (avoids Windows OpenSSH wedge)
+│   │                    via launch.ps1 + runner.ps1 (avoids Windows OpenSSH wedge).
+│   │                    Includes install_qga.ps1 (KVM guest agent) and
+│   │                    install_vmware_tools.ps1 (invoked from backend/vmware.sh)
 │   ├── third-party/     vendored upstreams (mcp-windbg etc.)
+│   ├── repack-iso-noprompt.sh    rewrites the Win11 install ISO to skip the
+│   │                             "Press any key to boot from CD" prompt
+│   ├── disable-dc-onboarding.ps1 one-shot at role-bootstrap to silence DC's
+│   │                             pendingWelcomeOnboarding prompt-injection
 │   └── *.py / *.ps1     kd_wrapper, target/debugger MCP HTTP shims, ...
 ├── skills/              eight-stage pipeline skill set (SKILL.md per stage)
 ├── lab/                 per-CVE working directories (intel, diffs, PoCs)
@@ -63,6 +70,14 @@ win11-forge/
 - PowerShell scripts: `Set-StrictMode -Version Latest` and
   `$ErrorActionPreference = 'Stop'` where the script does anything
   consequential.
+- PowerShell scripts must be **ASCII-only**. No em-dashes (`—`),
+  en-dashes (`–`), curly quotes, or other UTF-8 punctuation in string
+  literals. PowerShell's tokenizer chokes on them after the SCP /
+  encoding round-trip into the guest (silent ParserError, install
+  phase fails). See commit `10ec03c` (original sweep) and the
+  comments in `vm-setup/setup-vm-phases/install_qga.ps1` for the
+  empirical history. Bash/Python files in the repo use em-dashes
+  freely; the rule is PS1-specific.
 - Python: target the version the gold image ships (currently 3.x system
   Python). No package-manager assumptions inside the guest scripts.
 - Comment the *why*, not the *what*. The `vm-setup/` and
