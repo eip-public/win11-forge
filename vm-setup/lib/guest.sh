@@ -30,9 +30,16 @@ guest_select_transport() {
 # Run a PowerShell script in the guest. The script is the single arg.
 # Returns the script's exit code; stdout+stderr forwarded to ours.
 #
-# qga path: script piped via stdin to `powershell -Command -` inside the
-# guest. Zero quoting hell — the script bytes travel as opaque base64.
-# ssh path: legacy ssh_cmd wrapping `powershell -NoProfile -Command "..."`.
+# Both paths now ship the script body as opaque bytes, never interpolated
+# into a command line. This is the only correct way to handle arbitrary
+# embedded quotes / backslashes / $ across a shell-quoting chain.
+#
+# qga path: pipe via stdin to `powershell -Command -` inside the guest.
+# ssh path: base64-UTF16LE + `powershell -EncodedCommand`. Microsoft-
+#   blessed way to ship a PS script as one opaque token. The previous
+#   ssh_cmd "... -Command \"$script\"" mangled embedded quotes — the
+#   schtasks /TR "C:\..." arg lost its quotes, broke role-bootstrap
+#   under any backend on the SSH path.
 guest_powershell() {
     local script="$1"
     case "$(guest_select_transport)" in
@@ -41,7 +48,9 @@ guest_powershell() {
                 "$WINFORGE_QGA_DOMAIN" --timeout "${GUEST_CMD_TIMEOUT_S:-60}" <<<"$script"
             ;;
         ssh)
-            ssh_cmd "powershell -NoProfile -Command \"$script\""
+            local encoded
+            encoded=$(printf '%s' "$script" | iconv -t utf-16le | base64 -w0)
+            ssh_cmd "powershell -NoProfile -EncodedCommand $encoded"
             ;;
     esac
 }
