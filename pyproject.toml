@@ -29,11 +29,13 @@ extend-exclude = [
 #   E,W  pycodestyle errors/warnings (excluding line-length nits)
 #   F    pyflakes (unused imports, undefined names, etc.)
 #   I    isort import ordering
+#   N    pep8-naming (snake_case funcs/vars, PascalCase classes,
+#        UPPER_SNAKE_CASE constants, etc.)
 #   B    flake8-bugbear (likely bugs)
 #   UP   pyupgrade (modern Python idioms)
 #   SIM  flake8-simplify (collapsible conditionals)
 #   RUF  ruff-specific rules
-select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
+select = ["E", "W", "F", "I", "N", "B", "UP", "SIM", "RUF"]
 ignore = [
     # We use `except Exception:` deliberately around cleanup paths (kd.exe
     # supervisor, MCP shim) where any exception means "drop this resource

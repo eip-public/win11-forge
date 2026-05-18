@@ -349,6 +349,38 @@ Update it as fixes land.
 - No machine-specific paths in skill or doc prose (`/Users/<name>/`,
   `/home/<name>/`). Use `$HOME` and the canonical lab paths.
 
+## Naming conventions
+
+The conventions below are the canonical reference. Python is
+*partially* enforced by ruff's `N` (pep8-naming) rule set —
+class/function/argument/local names and mixedCase globals are caught
+by CI, but module-level constants being `UPPER_SNAKE_CASE` and the
+leading-underscore module-private rule are convention-only and live
+in code review. Bash and PowerShell are entirely convention-only.
+The existing tree is internally consistent and new code must match.
+See `CONTRIBUTING.md` "Naming conventions" for the full rules,
+per-bullet [ruff]/[convention] tags, and examples; the summary:
+
+- **Python**: `snake_case` functions/vars, `PascalCase` classes,
+  `UPPER_SNAKE_CASE` constants (review-enforced — ruff `N` accepts
+  lowercase here), leading `_` for module-private. Unit-bearing
+  constants use a suffix: `*_S` seconds, `*_PORT` ports,
+  `*_BYTES`/`*_KB` sizes.
+- **Bash**: `UPPER_SNAKE_CASE` for env-overridable settings and
+  module-level constants (`WINFORGE_BACKEND`, `VM_NAME`, `SCRIPT_DIR`);
+  `snake_case` for functions and `local` vars; leading `_` marks a
+  file-local helper (`_ssh_probe`, `_lab_wait_ssh`); `kebab-case` for
+  script filenames and CLI subcommands.
+- **PowerShell**: `Verb-Noun` cmdlet style with approved verbs;
+  `PascalCase` variables and parameters; ASCII-only string literals.
+- **Lab files**: filenames are fixed by the eight-stage contract (see
+  "Lab files" above). Ad-hoc names break the pipeline.
+
+Don't rename existing public identifiers casually — they appear in
+documented MCP endpoint paths, lab-file filenames, and the
+`WINFORGE_*` env-override surface. Match the convention; don't
+re-letter the world.
+
 ## Documentation hierarchy
 
 When updating docs:
