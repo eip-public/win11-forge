@@ -46,16 +46,26 @@ vm-setup/                       guest-side install + lab-host helpers
   create-vm.sh                  builds the per-overlay target/debugger;
                                 accepts either an ISO or a .vhd/.vhdx
   setup-desktop-commander.ps1   guest DC install
+  disable-dc-onboarding.ps1     silences DC's pendingWelcomeOnboarding
+                                prompt-injection at role-bootstrap time
   role-bootstrap-target.sh      target VM role bootstrap: KDNET
                                 bcdedit, testsigning, auto-reboot
   role-bootstrap-debugger.sh    debugger VM role bootstrap
   kd_wrapper.py                 SYSTEM-scheduled wrapper that runs
                                 kd.exe and exposes an MCP endpoint
   kd_break.ps1                  triggers a kernel break on demand
-  target_mcp_http.py            DesktopCommander HTTP shim
+  target_mcp_http.py            DesktopCommander HTTP shim, plus
+                                native run_powershell_script tool
+                                (collapses the write_file +
+                                start_process + read_process_output
+                                dance into one round trip)
   windbg_mcp_http.py            WinDbg MCP HTTP shim
   qcow2-to-vmware.sh            converts gold.qcow2 -> gold.vmdk for
                                 VMware backend
+  repack-iso-noprompt.sh        rewrites the Win11 install ISO to
+                                skip the "Press any key to boot from
+                                CD" prompt (Microsoft's noprompt
+                                blobs are already inside the ISO)
   fetch-isos.sh                 standalone fetcher for Win11 LTSC +
                                 virtio-win ISOs (mirrors the logic in
                                 install-deps.sh)
@@ -66,13 +76,23 @@ vm-setup/                       guest-side install + lab-host helpers
   lib/                          shared helpers sourced by the other
                                 scripts (ssh-helpers, log, virsh-helpers,
                                 dc-helpers, macs.env, defaults.sh,
-                                set-disk-source.py). One source of truth
+                                set-disk-source.py, plus the guest
+                                control-plane stack: guest.sh
+                                transport dispatch, qga.py host
+                                wrapper for virsh qemu-agent-command,
+                                vmrun.py host wrapper for vmrun
+                                runProgramInGuest). One source of truth
                                 per shared concern.
   setup-vm-phases/              gold-build PowerShell phase scripts.
                                 Launched via launch.ps1 + runner.ps1 as
                                 detached Windows scheduled tasks — see
                                 rule 10 below for why synchronous SSH
-                                doesn't work here.
+                                doesn't work here. Includes install_qga.ps1
+                                (KVM guest agent MSI + vioserial driver)
+                                and install_vmware_tools.ps1 (invoked
+                                from backend/vmware.sh, NOT setup-vm.sh
+                                — see rule 14 for the hypervisor-detect
+                                gotcha).
   third-party/mcp-windbg/       vendored upstream fork
 
 skills/                         eight-stage pipeline skill set
@@ -176,6 +196,44 @@ them.
     works today but silently fragile across OVMF upgrades and adds
     extra firmware time before Windows starts. If you add a new
     backend, replicate the prefer-stash behavior.
+
+12. **Guest control plane: qga (KVM) / vmrun (VMware) primary, SSH
+    fallback.** Lab orchestration (`role-bootstrap-*.sh`,
+    `setup.sh::_lab_wait_ssh`) drives the guest via the hypervisor's
+    private guest-agent channel — `virsh qemu-agent-command` on
+    KVM, `vmrun runProgramInGuest` on VMware. Both sidestep the
+    Windows OpenSSH worker's stdout-wedge failure mode. SSH stays
+    for bulk file transfer (qga's `guest-file-*` / vmrun's
+    `copyFile*` are too slow for multi-MB blobs) and as the
+    fallback path on legacy golds. `vm-setup/lib/guest.sh` is the
+    single dispatcher — `guest_powershell` / `guest_cmd` /
+    `guest_select_transport`. Don't bypass it when shipping
+    commands to the guest; bypassing reintroduces both transport
+    selection bugs and the quoting bug in rule 13.
+
+13. **SSH-fallback PowerShell goes via `-EncodedCommand` (base64-
+    UTF16LE), never `"... -Command \"$script\""`.** The raw quoted
+    form mangles embedded quotes the moment `$script` itself
+    contains `"..."` (e.g. `schtasks /TR "C:\Python314\python.exe
+    C:\winforge\target_mcp_http.py"`) — the inner quote terminates
+    PowerShell's `-Command` argument and the script breaks at parse
+    time. Caused real role-bootstrap failures on 2026-05-17/18.
+    `vm-setup/lib/guest.sh`'s SSH branch handles this correctly via
+    `iconv -t utf-16le | base64 -w0`. Don't write `ssh "powershell
+    ... -Command \"$x\""` anywhere new.
+
+14. **VMware Tools cannot be installed in the KVM-built gold.** The
+    official Microsoft VMware Tools `setup.exe` has a hardcoded
+    `VMCheckRequirements()` check that bails with MSI exit 1602
+    ("Not inside a VM. Exiting...") on any non-VMware hypervisor.
+    `setup-vm.sh` (which always runs on KVM during `./setup.sh
+    install`) can't install it. Tools install lives in
+    `backend/vmware.sh::_vmware_install_tools_in_gold`, which runs
+    once per host on the first VMware lab spawn: boots `gold.vmx`
+    under VMware, SSHes in, installs Tools, shuts down, marks
+    `vm-images/vmware/<gold>/.tools-installed`, then takes the base
+    snapshot. All linked clones inherit. Don't try to "fix" this
+    by moving the install to setup-vm.sh — it will fail 1602.
 
 ## Lab files
 
