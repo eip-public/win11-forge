@@ -104,7 +104,7 @@ bats tests/lab-lifecycle.bats           # backend-agnostic checks
 
 ## Linting
 
-The repo lints both bash and Python on every push/PR via
+The repo lints bash and Python (ruff + mypy) on every push/PR via
 `.github/workflows/lint.yml`. Run the same checks locally before
 opening a PR:
 
@@ -121,11 +121,17 @@ find . -name '*.sh' \
 # Python — vm-setup/*.py, vm-setup/lib/*.py
 # Rule set, per-file ignores, and target-version live in pyproject.toml.
 ruff check
+
+# Static type checking. Scope, python_version, and the strict-ish
+# flag set live under [tool.mypy] in pyproject.toml. In a venv:
+#   python3 -m venv .venv && .venv/bin/pip install 'mypy==1.20.*'
+#   .venv/bin/mypy
+mypy
 ```
 
-Both linters must pass cleanly on the project's in-scope files. The
-`vm-setup/third-party/` tree (vendored upstream) and `lab/` (per-CVE
-scratch code) are excluded by configuration.
+All three checks must pass cleanly on the project's in-scope files.
+The `vm-setup/third-party/` tree (vendored upstream) and `lab/`
+(per-CVE scratch code) are excluded by configuration.
 
 ## Lab work in `lab/`
 

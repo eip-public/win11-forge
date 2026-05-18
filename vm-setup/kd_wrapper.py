@@ -35,6 +35,7 @@ import sys
 import threading
 import time
 import types
+from typing import IO
 
 # config
 
@@ -76,7 +77,7 @@ log = logging.getLogger("kd_wrapper")
 
 _kd_proc:   subprocess.Popen | None = None
 _http_proc: subprocess.Popen | None = None
-_kd_log_fh = None
+_kd_log_fh: IO[str] | None = None
 _shutdown   = threading.Event()
 
 def _handle_signal(sig: int, _: types.FrameType | None) -> None:
@@ -214,6 +215,9 @@ def _prompt_monitor(proc: subprocess.Popen, cycle: int, pipe_ready_event: thread
     injected = False
 
     def send(cmd: str, delay: float = 1.5) -> None:
+        if proc.stdin is None:
+            log.warning(f"[cycle {cycle}] proc.stdin is None; skipping '{cmd}'")
+            return
         try:
             proc.stdin.write((cmd + "\n").encode())
             proc.stdin.flush()
@@ -362,7 +366,9 @@ def run() -> None:
 
         if pipe_appeared or _pipe_exists():
             log.info(f"[cycle {cycle}] Pipe ready - starting HTTP MCP server")
-            if _http_proc is None or _http_proc.poll() is not None:
+            # _http_proc was reset to None at the top of this cycle; the
+            # supervisor restarts the HTTP server fresh on every kd cycle.
+            if _http_proc is None:
                 _http_proc = _start_http()
                 if _http_proc is not None:
                     log.info(f"[cycle {cycle}] HTTP server pid: {_http_proc.pid}")
