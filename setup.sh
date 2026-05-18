@@ -407,13 +407,20 @@ _lab_wait_ssh() {
         debugger) domain="$DEBUGGER_NAME" ;;
     esac
 
-    # Up-front qga feature-check. One short ping; failure = legacy gold,
-    # fall back to SSH for the rest of the wait. This avoids running BOTH
-    # transports every poll on a no-qga gold.
+    # Up-front guest-agent feature-check. One short ping per available
+    # transport; on failure, fall back to SSH for the rest of the wait.
+    # This avoids running ALL transports every poll on a legacy gold.
     local transport=ssh
+    local vmx=""
     if [[ "$WINFORGE_BACKEND" == "kvm" ]] && [[ -n "$domain" ]] \
        && python3 "$VM_SETUP/lib/qga.py" ping "$domain" 2>/dev/null; then
         transport=qga
+    elif [[ "$WINFORGE_BACKEND" == "vmware" ]]; then
+        vmx="$(_vmware_vmx_path "$role" 2>/dev/null || true)"
+        if [[ -n "$vmx" && -f "$vmx" ]] \
+           && python3 "$VM_SETUP/lib/vmrun.py" ping "$vmx" 2>/dev/null; then
+            transport=vmrun
+        fi
     fi
 
     log "Waiting for $label via $transport at $ip (max ${max_wall_s}s)"
@@ -442,6 +449,29 @@ _lab_wait_ssh() {
                     last_fail="qga rc=${rc}"
                 else
                     last_fail="qga ok but sshd state='$(echo "$probe_out" | tr -d '\n\r' | head -c 80)'"
+                fi
+                consecutive_ok=0
+            fi
+        elif [[ "$transport" == "vmrun" ]]; then
+            # vmrun path: same intent as qga — confirm sshd Running so a
+            # downstream scp_to has something to connect to. vmrun's
+            # run_powershell adds ~1s of file-roundtrip overhead per call;
+            # acceptable here because we only run a handful in the wait.
+            probe_out=$(timeout "$probe_timeout_s" \
+                python3 "$VM_SETUP/lib/vmrun.py" powershell "$vmx" --timeout 8 \
+                <<<'(Get-Service sshd -EA SilentlyContinue).Status' \
+                2>/dev/null) || rc=$?
+            if (( rc == 0 )) && [[ "$probe_out" == *Running* ]]; then
+                ok_count=$((ok_count + 1))
+                consecutive_ok=$((consecutive_ok + 1))
+            else
+                fail_count=$((fail_count + 1))
+                if (( rc == 124 )); then
+                    last_fail="vmrun probe timed out after ${probe_timeout_s}s"
+                elif (( rc != 0 )); then
+                    last_fail="vmrun rc=${rc}"
+                else
+                    last_fail="vmrun ok but sshd state='$(echo "$probe_out" | tr -d '\n\r' | head -c 80)'"
                 fi
                 consecutive_ok=0
             fi
@@ -507,12 +537,23 @@ _lab_wait_diag() {
     else
         port22="closed"
     fi
-    if [[ -n "$domain" ]] && python3 "$VM_SETUP/lib/qga.py" ping "$domain" 2>/dev/null; then
-        qga_state="up"
-    else
-        qga_state="down"
+    local agent_state="n/a"
+    if [[ "$WINFORGE_BACKEND" == "kvm" ]] && [[ -n "$domain" ]]; then
+        if python3 "$VM_SETUP/lib/qga.py" ping "$domain" 2>/dev/null; then
+            agent_state="qga:up"
+        else
+            agent_state="qga:down"
+        fi
+    elif [[ "$WINFORGE_BACKEND" == "vmware" ]]; then
+        local vmx; vmx="$(_vmware_vmx_path "$role" 2>/dev/null || true)"
+        if [[ -n "$vmx" && -f "$vmx" ]] \
+           && python3 "$VM_SETUP/lib/vmrun.py" ping "$vmx" 2>/dev/null; then
+            agent_state="vmrun:up"
+        else
+            agent_state="vmrun:down"
+        fi
     fi
-    log "  $label t+${elapsed}s ($transport): vm=$domstate qga=$qga_state ping=$ping_ms port22=$port22 ok=$ok_count fail=$fail_count last='$last_fail'"
+    log "  $label t+${elapsed}s ($transport): vm=$domstate $agent_state ping=$ping_ms port22=$port22 ok=$ok_count fail=$fail_count last='$last_fail'"
 }
 
 cmd_lab() {
@@ -723,11 +764,14 @@ _lab_spawn() {
     _lab_wait_ssh "$TARGET_IP" "target"
 
     log "Configuring target role (KDNET bcdedit, debugger=$DEBUGGER_IP)"
-    # WINFORGE_QGA_DOMAIN is consumed by role-bootstrap-target.sh's
-    # guest_select_transport: when set + reachable, short commands run
-    # over the QEMU guest agent instead of SSH (no wedge risk). Empty
-    # on VMware (or any backend without virsh qemu-agent-command).
-    WINFORGE_QGA_DOMAIN="$([[ "$WINFORGE_BACKEND" == "kvm" ]] && echo "$TARGET_NAME")" \
+    # WINFORGE_QGA_DOMAIN / WINFORGE_VMRUN_VMX are consumed by the
+    # role-bootstrap scripts' guest_select_transport: when set +
+    # reachable, short commands run over the hypervisor's guest agent
+    # (qga on KVM, vmrun on VMware) instead of SSH (no wedge risk).
+    # Exactly one is set per backend; the other stays empty so the
+    # transport detector falls cleanly to the matching path.
+    WINFORGE_QGA_DOMAIN="$([[ "$WINFORGE_BACKEND" == "kvm"    ]] && echo "$TARGET_NAME")" \
+    WINFORGE_VMRUN_VMX="$( [[ "$WINFORGE_BACKEND" == "vmware" ]] && _vmware_vmx_path target)" \
         "$VM_SETUP/role-bootstrap-target.sh" "$TARGET_IP" "$SSH_KEY" "$DEBUGGER_IP"
 
     log "Starting debugger ($gui_mode)"
@@ -735,7 +779,8 @@ _lab_spawn() {
     _lab_wait_ssh "$DEBUGGER_IP" "debugger"
 
     log "Configuring debugger role (kd.exe KDNET, MCP HTTP)"
-    WINFORGE_QGA_DOMAIN="$([[ "$WINFORGE_BACKEND" == "kvm" ]] && echo "$DEBUGGER_NAME")" \
+    WINFORGE_QGA_DOMAIN="$([[ "$WINFORGE_BACKEND" == "kvm"    ]] && echo "$DEBUGGER_NAME")" \
+    WINFORGE_VMRUN_VMX="$( [[ "$WINFORGE_BACKEND" == "vmware" ]] && _vmware_vmx_path debugger)" \
         "$VM_SETUP/role-bootstrap-debugger.sh" "$DEBUGGER_IP" "$SSH_KEY"
 
     ok "Lab VMs up. Immediate MCP endpoints are live; :8100 comes up after first break (lab load-mcp)."
