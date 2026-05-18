@@ -1,9 +1,11 @@
 name: lint
 
-# Runs the repo-level linters on every push and pull request.
-#   - shellcheck on bash scripts (install-deps.sh, setup.sh, vm-setup/**/*.sh)
-#   - ruff       on Python helpers (vm-setup/*.py, vm-setup/lib/*.py)
-#   - mypy       on Python helpers (same scope as ruff; [tool.mypy] in pyproject.toml)
+# Runs the repo-level linters/formatters on every push and pull request.
+#   - shellcheck    on bash scripts (install-deps.sh, setup.sh, vm-setup/**/*.sh)
+#   - shfmt --diff  on bash scripts (same scope; -i 4 -ci)
+#   - ruff check    on Python helpers (vm-setup/*.py, vm-setup/lib/*.py)
+#   - ruff format --check on Python helpers (same scope)
+#   - mypy          on Python helpers (same scope as ruff)
 # Config lives in .shellcheckrc and pyproject.toml at repo root.
 
 on:
@@ -58,6 +60,43 @@ jobs:
         # Config (target-version, line-length, rule selection, per-file
         # ignores) lives in pyproject.toml at the repo root.
         run: ruff check
+
+      - name: ruff format --check
+        # Same config; [tool.ruff.format] in pyproject.toml. --check
+        # fails CI if any in-scope Python file isn't formatter-clean.
+        run: ruff format --check
+
+  shfmt:
+    name: shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shfmt
+        # mvdan/sh's official binary release. Pin a specific version so a
+        # silent upstream formatting change can't fail CI on a green
+        # branch.
+        run: |
+          set -e
+          curl -fsSL -o /usr/local/bin/shfmt \
+            https://github.com/mvdan/sh/releases/download/v3.13.1/shfmt_v3.13.1_linux_amd64
+          chmod +x /usr/local/bin/shfmt
+          shfmt --version
+
+      - name: shfmt --diff
+        # Flags must match the documented local invocation in
+        # CONTRIBUTING.md and CLAUDE.md exactly:
+        #   -i 4  : 4-space indent (the dominant existing style)
+        #   -ci   : indent switch-case arms one level (matches existing)
+        # -d / --diff exits non-zero with a unified diff if anything is
+        # out of format. vm-setup/third-party/ is vendored upstream code
+        # and lab/ holds per-CVE scratch; both are excluded by policy.
+        run: |
+          find . -name '*.sh' \
+            -not -path './vm-setup/third-party/*' \
+            -not -path './lab/*' \
+            -not -path './.git/*' \
+            -print0 | xargs -0 shfmt -i 4 -ci -d
 
   mypy:
     name: mypy

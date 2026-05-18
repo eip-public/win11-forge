@@ -42,40 +42,67 @@ UNATTEND_XML="$SCRIPT_DIR/autounattend.xml"
 
 # Parse args
 while [[ $# -gt 0 ]]; do
-  case $1 in
-    --iso) ISO="$2"; shift 2;;
-    --name) VM_NAME="$2"; QCOW2="$IMAGES_DIR/${VM_NAME}.qcow2"; shift 2;;
-    --ram) VM_RAM="$2"; shift 2;;
-    --cpus) VM_CPUS="$2"; shift 2;;
-    --disk-size) DISK_SIZE="$2"; shift 2;;
-    --mac) VM_MAC="$2"; shift 2;;
-    *) echo "Unknown option: $1"; exit 1;;
-  esac
+    case $1 in
+        --iso)
+            ISO="$2"
+            shift 2
+            ;;
+        --name)
+            VM_NAME="$2"
+            QCOW2="$IMAGES_DIR/${VM_NAME}.qcow2"
+            shift 2
+            ;;
+        --ram)
+            VM_RAM="$2"
+            shift 2
+            ;;
+        --cpus)
+            VM_CPUS="$2"
+            shift 2
+            ;;
+        --disk-size)
+            DISK_SIZE="$2"
+            shift 2
+            ;;
+        --mac)
+            VM_MAC="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
 done
 
 # Detect os-variant from VM name or ISO filename
 detect_os_variant() {
-  local name="${1,,}"
-  if [[ "$name" == *server2025* || "$name" == *srv2025* ]]; then echo "win2k22"
-  elif [[ "$name" == *server2022* || "$name" == *srv2022* ]]; then echo "win2k22"
-  elif [[ "$name" == *server2019* || "$name" == *srv2019* ]]; then echo "win2k19"
-  elif [[ "$name" == *win10* ]]; then echo "win10"
-  else echo "win11"
-  fi
+    local name="${1,,}"
+    if [[ "$name" == *server2025* || "$name" == *srv2025* ]]; then
+        echo "win2k22"
+    elif [[ "$name" == *server2022* || "$name" == *srv2022* ]]; then
+        echo "win2k22"
+    elif [[ "$name" == *server2019* || "$name" == *srv2019* ]]; then
+        echo "win2k19"
+    elif [[ "$name" == *win10* ]]; then
+        echo "win10"
+    else
+        echo "win11"
+    fi
 }
 OS_VARIANT=$(detect_os_variant "$VM_NAME-$(basename "$ISO")")
 
 if [[ "$OS_VARIANT" == "win2k22" || "$OS_VARIANT" == "win2k19" ]]; then
-  UNATTEND_XML="$SCRIPT_DIR/autounattend-server.xml"
-  VM_USER="Administrator"
-  VM_PASS="forge123F"
+    UNATTEND_XML="$SCRIPT_DIR/autounattend-server.xml"
+    VM_USER="Administrator"
+    VM_PASS="forge123F"
 fi
 
 guest_state_via_password() {
-  timeout 10 sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    -o ConnectTimeout=3 -o LogLevel=ERROR "$VM_USER@$VM_IP" \
-    "powershell -NoProfile -Command \"if (Test-Path 'C:\\winforge\\ready.json') { try { (Get-Content 'C:\\winforge\\ready.json' -Raw | ConvertFrom-Json).state } catch { 'invalid' } } else { 'missing' }\"" \
-    2>/dev/null | tr -d '\r' | tail -1
+    timeout 10 sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        -o ConnectTimeout=3 -o LogLevel=ERROR "$VM_USER@$VM_IP" \
+        "powershell -NoProfile -Command \"if (Test-Path 'C:\\winforge\\ready.json') { try { (Get-Content 'C:\\winforge\\ready.json' -Raw | ConvertFrom-Json).state } catch { 'invalid' } } else { 'missing' }\"" \
+        2>/dev/null | tr -d '\r' | tail -1
 }
 
 echo "=== WinForge VM Creation ==="
@@ -91,83 +118,92 @@ echo ""
 
 IS_VHD=false
 case "${ISO,,}" in
-  *.vhd|*.vhdx) IS_VHD=true ;;
-  *)
-    if file "$ISO" 2>/dev/null | grep -qi "Microsoft Disk Image\|Virtual Server\|Virtual PC"; then
-      IS_VHD=true
-    fi
-    ;;
+    *.vhd | *.vhdx) IS_VHD=true ;;
+    *)
+        if file "$ISO" 2>/dev/null | grep -qi "Microsoft Disk Image\|Virtual Server\|Virtual PC"; then
+            IS_VHD=true
+        fi
+        ;;
 esac
 
 # ── Preflight checks ──────────────────────────────────────────────
 
-check_file() { [[ -f "$1" ]] || { echo "ERROR: $1 not found"; exit 1; }; }
+check_file() { [[ -f "$1" ]] || {
+    echo "ERROR: $1 not found"
+    exit 1
+}; }
 check_file "$ISO"
 if [[ "$IS_VHD" == "false" ]]; then
-  check_file "$VIRTIO_ISO"
+    check_file "$VIRTIO_ISO"
 fi
 
-which virsh >/dev/null 2>&1 || { echo "ERROR: virsh not found. Install libvirt."; exit 1; }
-which qemu-img >/dev/null 2>&1 || { echo "ERROR: qemu-img not found. Install qemu-utils."; exit 1; }
+which virsh >/dev/null 2>&1 || {
+    echo "ERROR: virsh not found. Install libvirt."
+    exit 1
+}
+which qemu-img >/dev/null 2>&1 || {
+    echo "ERROR: qemu-img not found. Install qemu-utils."
+    exit 1
+}
 
 if [[ "$IS_VHD" == "true" ]]; then
-  echo "[*] VHD detected — will convert to QCOW2 and boot directly (no ISO install)"
+    echo "[*] VHD detected — will convert to QCOW2 and boot directly (no ISO install)"
 fi
 
 # ── Generate SSH key if needed ─────────────────────────────────────
 
 if [[ ! -f "$SSH_KEY" ]]; then
-  echo "[*] Generating SSH key..."
-  ssh-keygen -t ed25519 -f "$SSH_KEY" -N '' -q
+    echo "[*] Generating SSH key..."
+    ssh-keygen -t ed25519 -f "$SSH_KEY" -N '' -q
 fi
 
 # ── Build unattend ISO (only for ISO installs) ─────────────────────
 
 if [[ "$IS_VHD" == "false" ]]; then
-  echo "[*] Building unattend ISO..."
-  UNATTEND_DIR="$REPO_ROOT/unattend-iso"
-  UNATTEND_BUILD_DIR=$(mktemp -d)
-  cp -a "$UNATTEND_DIR/." "$UNATTEND_BUILD_DIR/"
-  cp "$UNATTEND_XML" "$UNATTEND_BUILD_DIR/autounattend.xml"
-  rm -f "$UNATTEND_ISO"
-  genisoimage -o "$UNATTEND_ISO" -J -r "$UNATTEND_BUILD_DIR/" 2>/dev/null
-  rm -rf "$UNATTEND_BUILD_DIR"
+    echo "[*] Building unattend ISO..."
+    UNATTEND_DIR="$REPO_ROOT/unattend-iso"
+    UNATTEND_BUILD_DIR=$(mktemp -d)
+    cp -a "$UNATTEND_DIR/." "$UNATTEND_BUILD_DIR/"
+    cp "$UNATTEND_XML" "$UNATTEND_BUILD_DIR/autounattend.xml"
+    rm -f "$UNATTEND_ISO"
+    genisoimage -o "$UNATTEND_ISO" -J -r "$UNATTEND_BUILD_DIR/" 2>/dev/null
+    rm -rf "$UNATTEND_BUILD_DIR"
 fi
 
 # ── Clean up old VM ────────────────────────────────────────────────
 
 if virsh dominfo "$VM_NAME" >/dev/null 2>&1; then
-  echo "[*] Removing existing VM '$VM_NAME'..."
-  virsh_or_warn destroy "$VM_NAME"
-  # Delete snapshots metadata first
-  for snap in $(virsh snapshot-list "$VM_NAME" --name 2>/dev/null); do
-    virsh_or_warn snapshot-delete "$VM_NAME" "$snap" --metadata
-  done
-  virsh_or_warn undefine "$VM_NAME" --nvram
+    echo "[*] Removing existing VM '$VM_NAME'..."
+    virsh_or_warn destroy "$VM_NAME"
+    # Delete snapshots metadata first
+    for snap in $(virsh snapshot-list "$VM_NAME" --name 2>/dev/null); do
+        virsh_or_warn snapshot-delete "$VM_NAME" "$snap" --metadata
+    done
+    virsh_or_warn undefine "$VM_NAME" --nvram
 fi
 
 # ── Create disk ────────────────────────────────────────────────────
 
 if [[ "$IS_VHD" == "true" ]]; then
-  echo "[*] Converting VHD to QCOW2 (this may take a few minutes)..."
-  rm -f "$QCOW2"
-  # No -f: qemu-img auto-detects vpc (old .vhd) vs vhdx (Microsoft dev VMs ship
-  # as .vhdx). Hardcoding -f vpc silently rejected every .vhdx with
-  # "invalid VPC image".
-  qemu-img convert -O qcow2 "$ISO" "$QCOW2"
-  # Resize if the VHD is smaller than requested
-  CURRENT_SIZE=$(qemu-img info --output=json "$QCOW2" | python3 -c "import sys,json; print(json.load(sys.stdin)['virtual-size'])" 2>/dev/null || echo 0)
-  REQUESTED_BYTES=$(numfmt --from=iec "$DISK_SIZE" 2>/dev/null || echo 0)
-  if [[ "$REQUESTED_BYTES" -gt "$CURRENT_SIZE" ]]; then
-    qemu-img resize "$QCOW2" "$DISK_SIZE"
-    echo "[+] Disk resized to $DISK_SIZE"
-  fi
-  echo "[+] Converted: $QCOW2"
+    echo "[*] Converting VHD to QCOW2 (this may take a few minutes)..."
+    rm -f "$QCOW2"
+    # No -f: qemu-img auto-detects vpc (old .vhd) vs vhdx (Microsoft dev VMs ship
+    # as .vhdx). Hardcoding -f vpc silently rejected every .vhdx with
+    # "invalid VPC image".
+    qemu-img convert -O qcow2 "$ISO" "$QCOW2"
+    # Resize if the VHD is smaller than requested
+    CURRENT_SIZE=$(qemu-img info --output=json "$QCOW2" | python3 -c "import sys,json; print(json.load(sys.stdin)['virtual-size'])" 2>/dev/null || echo 0)
+    REQUESTED_BYTES=$(numfmt --from=iec "$DISK_SIZE" 2>/dev/null || echo 0)
+    if [[ "$REQUESTED_BYTES" -gt "$CURRENT_SIZE" ]]; then
+        qemu-img resize "$QCOW2" "$DISK_SIZE"
+        echo "[+] Disk resized to $DISK_SIZE"
+    fi
+    echo "[+] Converted: $QCOW2"
 else
-  echo "[*] Creating $DISK_SIZE QCOW2 disk..."
-  rm -f "$QCOW2"
-  qemu-img create -f qcow2 "$QCOW2" "$DISK_SIZE" >/dev/null
-  echo "[+] Created: $QCOW2"
+    echo "[*] Creating $DISK_SIZE QCOW2 disk..."
+    rm -f "$QCOW2"
+    qemu-img create -f qcow2 "$QCOW2" "$DISK_SIZE" >/dev/null
+    echo "[+] Created: $QCOW2"
 fi
 
 # ── Fix permissions for libvirt-qemu access ────────────────────────
@@ -177,8 +213,8 @@ fi
 
 DIR="$IMAGES_DIR"
 while [[ "$DIR" != "/" && "$DIR" != "$HOME" ]]; do
-  chmod o+rx "$DIR" 2>/dev/null || true
-  DIR=$(dirname "$DIR")
+    chmod o+rx "$DIR" 2>/dev/null || true
+    DIR=$(dirname "$DIR")
 done
 chmod o+r "$IMAGES_DIR"/* 2>/dev/null || true
 
@@ -186,154 +222,152 @@ chmod o+r "$IMAGES_DIR"/* 2>/dev/null || true
 
 echo "[*] Launching VM..."
 if [[ "$IS_VHD" == "true" ]]; then
-  # VHDs from Microsoft are MBR (legacy BIOS), not UEFI
-  VIRT_INSTALL_LOG=$(mktemp)
-  # SC2024: the `sudo virt-install ... >"$VIRT_INSTALL_LOG"` redirect
-  # is opened by the *outer* shell (the unprivileged user), and
-  # $VIRT_INSTALL_LOG is in /tmp via mktemp, so it is writable by the
-  # user. virt-install just inherits the fd. Capturing virt-install's
-  # output via `sudo tee` would change exit-code propagation.
-  # shellcheck disable=SC2024
-  if ! sudo virt-install \
-    --check path_in_use=off \
-    --name "$VM_NAME" \
-    --ram "$VM_RAM" \
-    --vcpus "$VM_CPUS" \
-    --os-variant "$OS_VARIANT" \
-    --disk "path=$QCOW2,format=qcow2,bus=sata,cache=writeback" \
-    --network network=default,model=e1000e,mac="$VM_MAC" \
-    --graphics vnc,listen=127.0.0.1 \
-    --video qxl \
-    --boot hd \
-    --import \
-    --noautoconsole >"$VIRT_INSTALL_LOG" 2>&1; then
-    echo "[!] virt-install failed for $VM_NAME"
-    tail -n 40 "$VIRT_INSTALL_LOG" || true
-    rm -f "$VIRT_INSTALL_LOG"
-    exit 1
-  fi
-  rm -f "$VIRT_INSTALL_LOG"
-
-
-  echo "[*] VHD imported. Waiting for VM to boot..."
-  echo "    VNC available (check: virsh vncdisplay $VM_NAME)"
-  echo "    NOTE: VHD images may require manual OOBE setup via VNC"
-  echo "          (user/password creation, network config, SSH enabling)"
-
-  MAX_WAIT=300
-  ELAPSED=0
-  while [[ $ELAPSED -lt $MAX_WAIT ]]; do
-    sleep 15
-    ELAPSED=$((ELAPSED + 15))
-    DHCP_IP=$(sudo virsh net-dhcp-leases default 2>/dev/null | grep -oP '192\.168\.122\.\d+' | head -1)
-    TARGET_IP="${DHCP_IP:-$VM_IP}"
-    if timeout 10 sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-       -o ConnectTimeout=3 -o LogLevel=ERROR "$VM_USER@$TARGET_IP" "echo OK" 2>/dev/null | grep -q OK; then
-      echo "[+] SSH available at $TARGET_IP!"
-      VM_IP="$TARGET_IP"
-      break
+    # VHDs from Microsoft are MBR (legacy BIOS), not UEFI
+    VIRT_INSTALL_LOG=$(mktemp)
+    # SC2024: the `sudo virt-install ... >"$VIRT_INSTALL_LOG"` redirect
+    # is opened by the *outer* shell (the unprivileged user), and
+    # $VIRT_INSTALL_LOG is in /tmp via mktemp, so it is writable by the
+    # user. virt-install just inherits the fd. Capturing virt-install's
+    # output via `sudo tee` would change exit-code propagation.
+    # shellcheck disable=SC2024
+    if ! sudo virt-install \
+        --check path_in_use=off \
+        --name "$VM_NAME" \
+        --ram "$VM_RAM" \
+        --vcpus "$VM_CPUS" \
+        --os-variant "$OS_VARIANT" \
+        --disk "path=$QCOW2,format=qcow2,bus=sata,cache=writeback" \
+        --network network=default,model=e1000e,mac="$VM_MAC" \
+        --graphics vnc,listen=127.0.0.1 \
+        --video qxl \
+        --boot hd \
+        --import \
+        --noautoconsole >"$VIRT_INSTALL_LOG" 2>&1; then
+        echo "[!] virt-install failed for $VM_NAME"
+        tail -n 40 "$VIRT_INSTALL_LOG" || true
+        rm -f "$VIRT_INSTALL_LOG"
+        exit 1
     fi
-    printf "\r    %ds elapsed, waiting for SSH..." "$ELAPSED"
-  done
-  echo ""
-else
-  VIRT_INSTALL_LOG=$(mktemp)
-  # shellcheck disable=SC2024  # see annotation above; same pattern
-  if ! sudo virt-install \
-    --check path_in_use=off \
-    --name "$VM_NAME" \
-    --ram "$VM_RAM" \
-    --vcpus "$VM_CPUS" \
-    --os-variant "$OS_VARIANT" \
-    --disk "path=$QCOW2,format=qcow2,bus=sata,cache=writeback" \
-    --cdrom "$ISO" \
-    --disk "path=$VIRTIO_ISO,device=cdrom" \
-    --disk "path=$UNATTEND_ISO,device=cdrom" \
-    --network network=default,model=e1000e,mac="$VM_MAC" \
-    --graphics vnc,listen=127.0.0.1 \
-    --video qxl \
-    --boot uefi \
-    --noautoconsole >"$VIRT_INSTALL_LOG" 2>&1; then
-    echo "[!] virt-install failed for $VM_NAME"
-    tail -n 40 "$VIRT_INSTALL_LOG" || true
     rm -f "$VIRT_INSTALL_LOG"
-    exit 1
-  fi
-  rm -f "$VIRT_INSTALL_LOG"
 
+    echo "[*] VHD imported. Waiting for VM to boot..."
+    echo "    VNC available (check: virsh vncdisplay $VM_NAME)"
+    echo "    NOTE: VHD images may require manual OOBE setup via VNC"
+    echo "          (user/password creation, network config, SSH enabling)"
 
-  # ── Handle CD boot prompt ─────────────────────────────────────────
-  # UEFI takes a few seconds before showing "Press any key to boot from CD".
-  # Send keys aggressively over a longer window to catch it.
-
-  # No CD-boot keypress needed: the ISO has been repacked at
-  # cmd_install time to use Microsoft's `cdboot_noprompt.efi` +
-  # `efisys_noprompt.bin` boot blobs, which skip the "Press any key to
-  # boot from CD or DVD" gate entirely. See vm-setup/repack-iso-noprompt.sh.
-  #
-  # The previous keypress loop was unsafe under load: a too-short window
-  # (15s) missed the prompt entirely and dropped into the BIOS menu; a
-  # too-long window (90s) sent Enters into the Windows installer UI
-  # after the prompt had cleared, hitting the Cancel button and tripping
-  # the "Are you sure you want to quit?" dialog.
-
-  # ── Monitor install ────────────────────────────────────────────────
-
-  echo "[*] Monitoring Windows install (this takes ~10 minutes)..."
-  echo "    VNC available (check: virsh vncdisplay $VM_NAME)"
-
-  PHASE1_DONE=false
-  MAX_WAIT=1800
-  ELAPSED=0
-
-  while [[ $ELAPSED -lt $MAX_WAIT ]]; do
-    sleep 15
-    ELAPSED=$((ELAPSED + 15))
-
-    STATE=$(sudo virsh domstate "$VM_NAME" 2>/dev/null || echo "unknown")
-
-    if [[ "$STATE" == "shut off" ]]; then
-      if [[ "$PHASE1_DONE" == "false" ]]; then
-        echo "[+] Phase 1 complete (VM shut off). Starting phase 2..."
-        PHASE1_DONE=true
-        sudo virsh start "$VM_NAME" 2>/dev/null
-      else
-        echo "[+] Phase 2 complete (VM shut off). Starting final boot..."
-        sudo virsh start "$VM_NAME" 2>/dev/null
-      fi
-    elif [[ "$STATE" == "running" ]]; then
-      # Wait for SSH — IP assigned via DHCP MAC reservation (192.168.122.100).
-      # `timeout 10` caps the whole attempt: ConnectTimeout=3 only covers TCP
-      # SYN; without an outer timeout, a hung post-auth ssh session (Windows
-      # sshd occasionally hangs the first session during first-boot warmup)
-      # would deadlock the pipe, the iteration never finishes, and MAX_WAIT
-      # cannot fire because $ELAPSED stops advancing. A 39-min hang was
-      # observed before this guard was added.
-      if timeout 10 sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-         -o ConnectTimeout=3 -o LogLevel=ERROR "$VM_USER@$VM_IP" "echo OK" 2>/dev/null | grep -q OK; then
-        GUEST_STATE="$(guest_state_via_password || true)"
-        GUEST_STATE="${GUEST_STATE:-probe_pending}"
-        case "$GUEST_STATE" in
-          bootstrap_ready|ready)
-            echo "[+] Guest bootstrap ready ($GUEST_STATE). Install complete."
+    MAX_WAIT=300
+    ELAPSED=0
+    while [[ $ELAPSED -lt $MAX_WAIT ]]; do
+        sleep 15
+        ELAPSED=$((ELAPSED + 15))
+        DHCP_IP=$(sudo virsh net-dhcp-leases default 2>/dev/null | grep -oP '192\.168\.122\.\d+' | head -1)
+        TARGET_IP="${DHCP_IP:-$VM_IP}"
+        if timeout 10 sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=3 -o LogLevel=ERROR "$VM_USER@$TARGET_IP" "echo OK" 2>/dev/null | grep -q OK; then
+            echo "[+] SSH available at $TARGET_IP!"
+            VM_IP="$TARGET_IP"
             break
-            ;;
-          error)
-            echo "[-] Guest bootstrap reported error. Check C:\\winforge\\bootstrap.log via VNC/SSH."
-            exit 1
-            ;;
-        esac
-      fi
-
-      printf "\r    %ds elapsed, domain: %s, guest: %s" "$ELAPSED" "$STATE" "${GUEST_STATE:-waiting}"
+        fi
+        printf "\r    %ds elapsed, waiting for SSH..." "$ELAPSED"
+    done
+    echo ""
+else
+    VIRT_INSTALL_LOG=$(mktemp)
+    # shellcheck disable=SC2024  # see annotation above; same pattern
+    if ! sudo virt-install \
+        --check path_in_use=off \
+        --name "$VM_NAME" \
+        --ram "$VM_RAM" \
+        --vcpus "$VM_CPUS" \
+        --os-variant "$OS_VARIANT" \
+        --disk "path=$QCOW2,format=qcow2,bus=sata,cache=writeback" \
+        --cdrom "$ISO" \
+        --disk "path=$VIRTIO_ISO,device=cdrom" \
+        --disk "path=$UNATTEND_ISO,device=cdrom" \
+        --network network=default,model=e1000e,mac="$VM_MAC" \
+        --graphics vnc,listen=127.0.0.1 \
+        --video qxl \
+        --boot uefi \
+        --noautoconsole >"$VIRT_INSTALL_LOG" 2>&1; then
+        echo "[!] virt-install failed for $VM_NAME"
+        tail -n 40 "$VIRT_INSTALL_LOG" || true
+        rm -f "$VIRT_INSTALL_LOG"
+        exit 1
     fi
-  done
-  echo ""
+    rm -f "$VIRT_INSTALL_LOG"
 
-  if [[ $ELAPSED -ge $MAX_WAIT ]]; then
-    echo "[-] Timeout waiting for install. Check VNC at :$VNC_PORT"
-    exit 1
-  fi
+    # ── Handle CD boot prompt ─────────────────────────────────────────
+    # UEFI takes a few seconds before showing "Press any key to boot from CD".
+    # Send keys aggressively over a longer window to catch it.
+
+    # No CD-boot keypress needed: the ISO has been repacked at
+    # cmd_install time to use Microsoft's `cdboot_noprompt.efi` +
+    # `efisys_noprompt.bin` boot blobs, which skip the "Press any key to
+    # boot from CD or DVD" gate entirely. See vm-setup/repack-iso-noprompt.sh.
+    #
+    # The previous keypress loop was unsafe under load: a too-short window
+    # (15s) missed the prompt entirely and dropped into the BIOS menu; a
+    # too-long window (90s) sent Enters into the Windows installer UI
+    # after the prompt had cleared, hitting the Cancel button and tripping
+    # the "Are you sure you want to quit?" dialog.
+
+    # ── Monitor install ────────────────────────────────────────────────
+
+    echo "[*] Monitoring Windows install (this takes ~10 minutes)..."
+    echo "    VNC available (check: virsh vncdisplay $VM_NAME)"
+
+    PHASE1_DONE=false
+    MAX_WAIT=1800
+    ELAPSED=0
+
+    while [[ $ELAPSED -lt $MAX_WAIT ]]; do
+        sleep 15
+        ELAPSED=$((ELAPSED + 15))
+
+        STATE=$(sudo virsh domstate "$VM_NAME" 2>/dev/null || echo "unknown")
+
+        if [[ "$STATE" == "shut off" ]]; then
+            if [[ "$PHASE1_DONE" == "false" ]]; then
+                echo "[+] Phase 1 complete (VM shut off). Starting phase 2..."
+                PHASE1_DONE=true
+                sudo virsh start "$VM_NAME" 2>/dev/null
+            else
+                echo "[+] Phase 2 complete (VM shut off). Starting final boot..."
+                sudo virsh start "$VM_NAME" 2>/dev/null
+            fi
+        elif [[ "$STATE" == "running" ]]; then
+            # Wait for SSH — IP assigned via DHCP MAC reservation (192.168.122.100).
+            # `timeout 10` caps the whole attempt: ConnectTimeout=3 only covers TCP
+            # SYN; without an outer timeout, a hung post-auth ssh session (Windows
+            # sshd occasionally hangs the first session during first-boot warmup)
+            # would deadlock the pipe, the iteration never finishes, and MAX_WAIT
+            # cannot fire because $ELAPSED stops advancing. A 39-min hang was
+            # observed before this guard was added.
+            if timeout 10 sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                -o ConnectTimeout=3 -o LogLevel=ERROR "$VM_USER@$VM_IP" "echo OK" 2>/dev/null | grep -q OK; then
+                GUEST_STATE="$(guest_state_via_password || true)"
+                GUEST_STATE="${GUEST_STATE:-probe_pending}"
+                case "$GUEST_STATE" in
+                    bootstrap_ready | ready)
+                        echo "[+] Guest bootstrap ready ($GUEST_STATE). Install complete."
+                        break
+                        ;;
+                    error)
+                        echo "[-] Guest bootstrap reported error. Check C:\\winforge\\bootstrap.log via VNC/SSH."
+                        exit 1
+                        ;;
+                esac
+            fi
+
+            printf "\r    %ds elapsed, domain: %s, guest: %s" "$ELAPSED" "$STATE" "${GUEST_STATE:-waiting}"
+        fi
+    done
+    echo ""
+
+    if [[ $ELAPSED -ge $MAX_WAIT ]]; then
+        echo "[-] Timeout waiting for install. Check VNC at :$VNC_PORT"
+        exit 1
+    fi
 fi
 
 echo ""

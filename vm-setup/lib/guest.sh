@@ -24,11 +24,11 @@ _GUEST_TRANSPORT=""
 
 guest_select_transport() {
     if [[ -z "$_GUEST_TRANSPORT" ]]; then
-        if [[ -n "${WINFORGE_QGA_DOMAIN:-}" ]] \
-           && python3 "$SCRIPT_DIR/lib/qga.py" ping "$WINFORGE_QGA_DOMAIN" 2>/dev/null; then
+        if [[ -n "${WINFORGE_QGA_DOMAIN:-}" ]] &&
+            python3 "$SCRIPT_DIR/lib/qga.py" ping "$WINFORGE_QGA_DOMAIN" 2>/dev/null; then
             _GUEST_TRANSPORT=qga
-        elif [[ -n "${WINFORGE_VMRUN_VMX:-}" ]] \
-           && python3 "$SCRIPT_DIR/lib/vmrun.py" ping "$WINFORGE_VMRUN_VMX" 2>/dev/null; then
+        elif [[ -n "${WINFORGE_VMRUN_VMX:-}" ]] &&
+            python3 "$SCRIPT_DIR/lib/vmrun.py" ping "$WINFORGE_VMRUN_VMX" 2>/dev/null; then
             _GUEST_TRANSPORT=vmrun
         else
             _GUEST_TRANSPORT=ssh
@@ -97,13 +97,14 @@ guest_cmd() {
 # caller — agents/operators benefit from seeing whether the run is on
 # the fast/no-wedge path or the legacy path.
 guest_report_transport() {
-    local t; t=$(guest_select_transport)
+    local t
+    t=$(guest_select_transport)
     local note
     case "$t" in
-        qga)   note=" (qga, no SSH worker wedge risk)" ;;
+        qga) note=" (qga, no SSH worker wedge risk)" ;;
         vmrun) note=" (vmrun via VMware Tools, no SSH worker wedge risk)" ;;
-        ssh)   note=" (ssh fallback)" ;;
-        *)     note="" ;;
+        ssh) note=" (ssh fallback)" ;;
+        *) note="" ;;
     esac
     printf '[*] Guest transport: %s%s\n' "$t" "$note"
 }

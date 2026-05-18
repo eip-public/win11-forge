@@ -38,20 +38,38 @@ FETCH_VIRTIO=1
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --dest)         IMAGES_DIR="$2"; shift 2 ;;
-        --win-only)     FETCH_VIRTIO=0; shift ;;
-        --virtio-only)  FETCH_WIN=0; shift ;;
-        --win-url)      WIN_ISO_URL="$2"; shift 2 ;;
-        --virtio-url)   VIRTIO_ISO_URL="$2"; shift 2 ;;
-        -h|--help)
+        --dest)
+            IMAGES_DIR="$2"
+            shift 2
+            ;;
+        --win-only)
+            FETCH_VIRTIO=0
+            shift
+            ;;
+        --virtio-only)
+            FETCH_WIN=0
+            shift
+            ;;
+        --win-url)
+            WIN_ISO_URL="$2"
+            shift 2
+            ;;
+        --virtio-url)
+            VIRTIO_ISO_URL="$2"
+            shift 2
+            ;;
+        -h | --help)
             sed -n '2,/^set -/p' "$0" | sed 's/^# \?//;$d'
             exit 0
             ;;
-        *) echo "Unknown option: $1" >&2; exit 2 ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 2
+            ;;
     esac
 done
 
-log()  { printf '\033[1;36m[*]\033[0m %s\n' "$*"; }
+log() { printf '\033[1;36m[*]\033[0m %s\n' "$*"; }
 # shellcheck source=lib/log.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/log.sh"
 
@@ -73,7 +91,10 @@ download_iso_if_missing() {
     local partial="$dest.partial"
 
     stage_local_iso_if_present "$name"
-    [[ -f "$dest" ]] && { ok "$name already present at $dest"; return 0; }
+    [[ -f "$dest" ]] && {
+        ok "$name already present at $dest"
+        return 0
+    }
 
     if iso_download_disabled; then
         warn "Missing $dest; ISO download skipped by WINFORGE_SKIP_ISO_DOWNLOAD=$WINFORGE_SKIP_ISO_DOWNLOAD"
@@ -92,8 +113,8 @@ download_iso_if_missing() {
 log "Staging ISOs into $IMAGES_DIR"
 mkdir -p "$IMAGES_DIR" "$ISOS_DIR"
 
-(( FETCH_WIN ))    && download_iso_if_missing "$WIN_ISO_NAME"    "$WIN_ISO_URL"
-(( FETCH_VIRTIO )) && download_iso_if_missing "$VIRTIO_ISO_NAME" "$VIRTIO_ISO_URL"
+((FETCH_WIN)) && download_iso_if_missing "$WIN_ISO_NAME" "$WIN_ISO_URL"
+((FETCH_VIRTIO)) && download_iso_if_missing "$VIRTIO_ISO_NAME" "$VIRTIO_ISO_URL"
 
 rmdir "$ISOS_DIR" 2>/dev/null || true
 
@@ -101,6 +122,6 @@ ok "ISO staging done"
 shopt -s nullglob
 iso_files=("$IMAGES_DIR"/*.iso)
 shopt -u nullglob
-if (( ${#iso_files[@]} > 0 )); then
+if ((${#iso_files[@]} > 0)); then
     ls -lh "${iso_files[@]}"
 fi

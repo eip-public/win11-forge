@@ -17,8 +17,8 @@
 set -Eeuo pipefail
 
 if [[ $# -lt 2 ]]; then
-  echo "Usage: $0 <name> <source.qcow2> [ram_mb=4096] [vcpus=4]" >&2
-  exit 1
+    echo "Usage: $0 <name> <source.qcow2> [ram_mb=4096] [vcpus=4]" >&2
+    exit 1
 fi
 
 NAME="$1"
@@ -33,8 +33,8 @@ VMDK="$OUT_DIR/$NAME.vmdk"
 VMX="$OUT_DIR/$NAME.vmx"
 
 if [[ ! -f "$SRC" ]]; then
-  echo "Source qcow2 not found: $SRC" >&2
-  exit 1
+    echo "Source qcow2 not found: $SRC" >&2
+    exit 1
 fi
 
 mkdir -p "$OUT_DIR"
@@ -43,7 +43,7 @@ echo "[+] Converting $SRC -> $VMDK (flattens backing chain)"
 qemu-img convert -p -f qcow2 -O vmdk -o subformat=monolithicSparse "$SRC" "$VMDK"
 
 echo "[+] Writing $VMX"
-cat > "$VMX" <<EOF
+cat >"$VMX" <<EOF
 .encoding = "UTF-8"
 config.version = "8"
 virtualHW.version = "21"

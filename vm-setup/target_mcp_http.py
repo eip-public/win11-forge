@@ -15,6 +15,7 @@ need is "run this PowerShell and give me the output".
 Run:
     python target_mcp_http.py --port 8200 --host 0.0.0.0
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,8 +26,8 @@ import time
 import uuid
 from pathlib import Path
 
-NODE   = r"C:\Program Files\nodejs\node.exe"
-DCMCP  = r"C:\winforge\node_modules\@wonderwhy-er\desktop-commander\dist\index.js"
+NODE = r"C:\Program Files\nodejs\node.exe"
+DCMCP = r"C:\winforge\node_modules\@wonderwhy-er\desktop-commander\dist\index.js"
 LOG_DIR = Path(r"C:\winforge\logs")
 RPS_DIR = Path(r"C:\winforge\rps")  # run_powershell_script staging dir
 
@@ -114,6 +115,7 @@ def main() -> int:
                 "script_path": str(ps1),
             }
         except subprocess.TimeoutExpired as e:
+
             def _decode(stream: object) -> str:
                 if isinstance(stream, bytes):
                     return stream.decode("utf-8", "replace")

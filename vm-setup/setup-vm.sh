@@ -38,12 +38,12 @@ POLL_MAX_S="${POLL_MAX_S:-3600}"
 # of cheap probes we run; if it doesn't complete in that, that IS the
 # failure signal we need — not a mask.
 _ssh_probe() {
-  local probe_timeout_s="${PROBE_TIMEOUT_S:-15}"
-  if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
-    timeout "$probe_timeout_s" ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$@" 2>&1
-  else
-    timeout "$probe_timeout_s" sshpass -p "$VM_PASS" ssh "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$@" 2>&1
-  fi
+    local probe_timeout_s="${PROBE_TIMEOUT_S:-15}"
+    if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
+        timeout "$probe_timeout_s" ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$@" 2>&1
+    else
+        timeout "$probe_timeout_s" sshpass -p "$VM_PASS" ssh "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$@" 2>&1
+    fi
 }
 
 # Wait until sshd is *stable*, not merely reachable.
@@ -69,51 +69,66 @@ _ssh_probe() {
 # covers slow hosts (~2-3 min boot+settle worst case observed) with 2x
 # margin again.
 wait_for_ssh() {
-  local label="${1:-SSH}"
-  local stable_required_s="${WAIT_FOR_SSH_STABLE_S:-30}"
-  local max_wall_s="${WAIT_FOR_SSH_MAX_S:-300}"
-  local consecutive_ok=0 total=0 ok_count=0 fail_count=0 last_fail=""
-  echo "[*] Waiting for ${label} (need ${stable_required_s}s uninterrupted, max ${max_wall_s}s)"
-  while (( total < max_wall_s )); do
-    local out rc=0
-    out=$(_ssh_probe "echo OK") || rc=$?
-    if (( rc == 0 )) && [[ "$out" == *OK* ]]; then
-      ok_count=$((ok_count + 1))
-      consecutive_ok=$((consecutive_ok + 1))
-      if (( consecutive_ok >= stable_required_s )); then
-        echo "[+] ${label} stable: ${ok_count} OKs / ${fail_count} fails over ${total}s (${consecutive_ok}s uninterrupted)"
-        return 0
-      fi
-    else
-      fail_count=$((fail_count + 1))
-      if (( rc == 124 )); then
-        last_fail="probe wedged (timed out after ${PROBE_TIMEOUT_S:-15}s, sshd worker stuck post-auth)"
-      else
-        last_fail="$out"
-      fi
-      if (( consecutive_ok > 0 )); then
-        echo "  t+${total}s: probe failed (had ${consecutive_ok}s OK) -- ${last_fail}"
-      fi
-      consecutive_ok=0
-    fi
-    sleep 1
-    total=$((total + 1))
-  done
-  echo "[!] ${label} did not stabilise within ${max_wall_s}s" >&2
-  echo "    ${ok_count} OKs / ${fail_count} fails over ${total}s; last consecutive run was ${consecutive_ok}s" >&2
-  echo "    last failure output: ${last_fail:-(none)}" >&2
-  return 1
+    local label="${1:-SSH}"
+    local stable_required_s="${WAIT_FOR_SSH_STABLE_S:-30}"
+    local max_wall_s="${WAIT_FOR_SSH_MAX_S:-300}"
+    local consecutive_ok=0 total=0 ok_count=0 fail_count=0 last_fail=""
+    echo "[*] Waiting for ${label} (need ${stable_required_s}s uninterrupted, max ${max_wall_s}s)"
+    while ((total < max_wall_s)); do
+        local out rc=0
+        out=$(_ssh_probe "echo OK") || rc=$?
+        if ((rc == 0)) && [[ "$out" == *OK* ]]; then
+            ok_count=$((ok_count + 1))
+            consecutive_ok=$((consecutive_ok + 1))
+            if ((consecutive_ok >= stable_required_s)); then
+                echo "[+] ${label} stable: ${ok_count} OKs / ${fail_count} fails over ${total}s (${consecutive_ok}s uninterrupted)"
+                return 0
+            fi
+        else
+            fail_count=$((fail_count + 1))
+            if ((rc == 124)); then
+                last_fail="probe wedged (timed out after ${PROBE_TIMEOUT_S:-15}s, sshd worker stuck post-auth)"
+            else
+                last_fail="$out"
+            fi
+            if ((consecutive_ok > 0)); then
+                echo "  t+${total}s: probe failed (had ${consecutive_ok}s OK) -- ${last_fail}"
+            fi
+            consecutive_ok=0
+        fi
+        sleep 1
+        total=$((total + 1))
+    done
+    echo "[!] ${label} did not stabilise within ${max_wall_s}s" >&2
+    echo "    ${ok_count} OKs / ${fail_count} fails over ${total}s; last consecutive run was ${consecutive_ok}s" >&2
+    echo "    last failure output: ${last_fail:-(none)}" >&2
+    return 1
 }
 
 # Parse args
 while [[ $# -gt 0 ]]; do
-  case $1 in
-    --ip) VM_IP="$2"; shift 2;;
-    --user) VM_USER="$2"; shift 2;;
-    --ssh-key) SSH_KEY="$2"; shift 2;;  # key path stored, but USE_KEY stays false until deployed
-    --password) VM_PASS="$2"; shift 2;;
-    *) echo "Unknown option: $1"; exit 1;;
-  esac
+    case $1 in
+        --ip)
+            VM_IP="$2"
+            shift 2
+            ;;
+        --user)
+            VM_USER="$2"
+            shift 2
+            ;;
+        --ssh-key)
+            SSH_KEY="$2"
+            shift 2
+            ;; # key path stored, but USE_KEY stays false until deployed
+        --password)
+            VM_PASS="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
 done
 
 # SSH helper -- uses key if available, password otherwise.
@@ -123,21 +138,21 @@ done
 # as long as needed is the lesser evil; if a session is truly dead, TCP
 # timeout (~1 hour) eventually breaks it and the user can Ctrl-C sooner.
 ssh_cmd() {
-  local cmd="$1"
-  if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
-    ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$cmd" 2>&1
-  else
-    sshpass -p "$VM_PASS" ssh "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$cmd" 2>&1
-  fi
+    local cmd="$1"
+    if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
+        ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$cmd" 2>&1
+    else
+        sshpass -p "$VM_PASS" ssh "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" "$cmd" 2>&1
+    fi
 }
 
 scp_to() {
-  local src="$1" dst="$2"
-  if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
-    scp -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
-  else
-    sshpass -p "$VM_PASS" scp "${SSH_OPTS_COMMON[@]}" "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
-  fi
+    local src="$1" dst="$2"
+    if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
+        scp -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
+    else
+        sshpass -p "$VM_PASS" scp "${SSH_OPTS_COMMON[@]}" "$src" "${VM_USER}@${VM_IP}:${dst}" 2>&1
+    fi
 }
 
 # Stage runner.ps1 + launch.ps1 on the guest exactly once per setup-vm.sh run.
@@ -146,10 +161,10 @@ scp_to() {
 #   runner.ps1 -- runs the user script with all output redirected to a log file
 #                 and writes the exit code to a marker file when done
 _stage_run_helpers() {
-  if [[ "${RUN_HELPERS_STAGED:-}" == "true" ]]; then return 0; fi
-  scp_to "$SCRIPT_DIR/setup-vm-phases/runner.ps1" "C:/winforge/runner.ps1" >&2
-  scp_to "$SCRIPT_DIR/setup-vm-phases/launch.ps1" "C:/winforge/launch.ps1" >&2
-  RUN_HELPERS_STAGED=true
+    if [[ "${RUN_HELPERS_STAGED:-}" == "true" ]]; then return 0; fi
+    scp_to "$SCRIPT_DIR/setup-vm-phases/runner.ps1" "C:/winforge/runner.ps1" >&2
+    scp_to "$SCRIPT_DIR/setup-vm-phases/launch.ps1" "C:/winforge/launch.ps1" >&2
+    RUN_HELPERS_STAGED=true
 }
 
 # Run a PowerShell script on the guest DETACHED from the ssh session.
@@ -164,113 +179,113 @@ _stage_run_helpers() {
 #   CHOCOLATEY_BOOTSTRAP_OUTPUT=$(upload_and_run_ps1 "$content" "name.ps1")
 # still capture the script's stdout via this function's stdout.
 upload_and_run_ps1() {
-  local script_content="$1"
-  local script_name="${2:-_setup_step.ps1}"
-  local base="${script_name%.ps1}"
-  local guest_script="C:/winforge/${script_name}"
-  local log="C:/winforge/state/runs/${base}.log"
-  local marker="C:/winforge/state/runs/${base}.done"
-  local task_name="winforge-${base}"
+    local script_content="$1"
+    local script_name="${2:-_setup_step.ps1}"
+    local base="${script_name%.ps1}"
+    local guest_script="C:/winforge/${script_name}"
+    local log="C:/winforge/state/runs/${base}.log"
+    local marker="C:/winforge/state/runs/${base}.done"
+    local task_name="winforge-${base}"
 
-  _stage_run_helpers
+    _stage_run_helpers
 
-  # Upload the user script. scp_to merges stderr->stdout internally; redirect
-  # to stderr so the scp progress line doesn't contaminate our stdout (which
-  # callers capture via $(...) for grep'ing).
-  local tmp_script
-  tmp_script="$(mktemp "/tmp/${script_name}.XXXXXX")"
-  printf '%s\n' "$script_content" >"$tmp_script"
-  scp_to "$tmp_script" "$guest_script" >&2
-  rm -f "$tmp_script"
+    # Upload the user script. scp_to merges stderr->stdout internally; redirect
+    # to stderr so the scp progress line doesn't contaminate our stdout (which
+    # callers capture via $(...) for grep'ing).
+    local tmp_script
+    tmp_script="$(mktemp "/tmp/${script_name}.XXXXXX")"
+    printf '%s\n' "$script_content" >"$tmp_script"
+    scp_to "$tmp_script" "$guest_script" >&2
+    rm -f "$tmp_script"
 
-  # Register + start the detached task. Returns in ~1s; sshd cannot wedge.
-  ssh_cmd "powershell -NoProfile -ExecutionPolicy Bypass -File C:/winforge/launch.ps1 -Script $guest_script -Log $log -Marker $marker -TaskName $task_name" >&2
+    # Register + start the detached task. Returns in ~1s; sshd cannot wedge.
+    ssh_cmd "powershell -NoProfile -ExecutionPolicy Bypass -File C:/winforge/launch.ps1 -Script $guest_script -Log $log -Marker $marker -TaskName $task_name" >&2
 
-  # Poll the marker. Each ssh call is short. We call ssh directly (not via
-  # ssh_cmd, which merges stderr->stdout) so any ssh error goes to bash's
-  # stderr — VISIBLE to the user, not hidden. Transient ssh failures yield
-  # an empty $rc and the loop sleeps + retries; the failure text still
-  # showed on stderr so the user knows.
-  local elapsed=0 rc=""
-  while (( elapsed < POLL_MAX_S )); do
-    if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
-      rc=$(ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" \
-        "powershell -NoProfile -Command \"if (Test-Path '$marker') { (Get-Content '$marker' -Raw).Trim() }\"" \
-        | tr -d '\r\n ')
-    else
-      rc=$(sshpass -p "$VM_PASS" ssh "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" \
-        "powershell -NoProfile -Command \"if (Test-Path '$marker') { (Get-Content '$marker' -Raw).Trim() }\"" \
-        | tr -d '\r\n ')
+    # Poll the marker. Each ssh call is short. We call ssh directly (not via
+    # ssh_cmd, which merges stderr->stdout) so any ssh error goes to bash's
+    # stderr — VISIBLE to the user, not hidden. Transient ssh failures yield
+    # an empty $rc and the loop sleeps + retries; the failure text still
+    # showed on stderr so the user knows.
+    local elapsed=0 rc=""
+    while ((elapsed < POLL_MAX_S)); do
+        if [[ "$USE_KEY" == "true" && -f "$SSH_KEY" ]]; then
+            rc=$(ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" \
+                "powershell -NoProfile -Command \"if (Test-Path '$marker') { (Get-Content '$marker' -Raw).Trim() }\"" |
+                tr -d '\r\n ')
+        else
+            rc=$(sshpass -p "$VM_PASS" ssh "${SSH_OPTS_COMMON[@]}" "${VM_USER}@${VM_IP}" \
+                "powershell -NoProfile -Command \"if (Test-Path '$marker') { (Get-Content '$marker' -Raw).Trim() }\"" |
+                tr -d '\r\n ')
+        fi
+        [[ -n "$rc" ]] && break
+        sleep "$POLL_INTERVAL_S"
+        elapsed=$((elapsed + POLL_INTERVAL_S))
+    done
+
+    if [[ -z "$rc" ]]; then
+        echo "[!] upload_and_run_ps1: timeout (${POLL_MAX_S}s) waiting for $marker on $VM_IP" >&2
+        return 124
     fi
-    [[ -n "$rc" ]] && break
-    sleep "$POLL_INTERVAL_S"
-    elapsed=$((elapsed + POLL_INTERVAL_S))
-  done
+    if ! [[ "$rc" =~ ^[0-9]+$ ]]; then
+        echo "[!] upload_and_run_ps1: non-numeric marker content '$rc' on $VM_IP" >&2
+        return 125
+    fi
 
-  if [[ -z "$rc" ]]; then
-    echo "[!] upload_and_run_ps1: timeout (${POLL_MAX_S}s) waiting for $marker on $VM_IP" >&2
-    return 124
-  fi
-  if ! [[ "$rc" =~ ^[0-9]+$ ]]; then
-    echo "[!] upload_and_run_ps1: non-numeric marker content '$rc' on $VM_IP" >&2
-    return 125
-  fi
+    # Stream the script's log to OUR stdout so callers can capture it.
+    ssh_cmd "powershell -NoProfile -Command \"if (Test-Path '$log') { Get-Content '$log' }\""
 
-  # Stream the script's log to OUR stdout so callers can capture it.
-  ssh_cmd "powershell -NoProfile -Command \"if (Test-Path '$log') { Get-Content '$log' }\""
+    # No bash-side task cleanup. launch.ps1 calls Unregister-ScheduledTask at
+    # the top of every invocation, so the same task name gets cleaned on next
+    # use. Leftover task definitions accumulate one-deep per unique phase name
+    # (~10 for setup-vm.sh); cosmetic, not functional. Avoids the bash -> ssh
+    # -> powershell quoting hell that would otherwise be needed to escape
+    # -Confirm:\$false correctly.
 
-  # No bash-side task cleanup. launch.ps1 calls Unregister-ScheduledTask at
-  # the top of every invocation, so the same task name gets cleaned on next
-  # use. Leftover task definitions accumulate one-deep per unique phase name
-  # (~10 for setup-vm.sh); cosmetic, not functional. Avoids the bash -> ssh
-  # -> powershell quoting hell that would otherwise be needed to escape
-  # -Confirm:\$false correctly.
-
-  return "$rc"
+    return "$rc"
 }
 
 phase_satisfied() {
-  local _marker="$1" verify_ps="$2"
-  local script_name="_verify_${_marker}.ps1"
-  local tmp_script
-  tmp_script="$(mktemp "/tmp/${script_name}.XXXXXX")"
-  printf '%s\n' "$verify_ps" >"$tmp_script"
-  if ! scp_to "$tmp_script" "C:/winforge/$script_name" >/dev/null; then
+    local _marker="$1" verify_ps="$2"
+    local script_name="_verify_${_marker}.ps1"
+    local tmp_script
+    tmp_script="$(mktemp "/tmp/${script_name}.XXXXXX")"
+    printf '%s\n' "$verify_ps" >"$tmp_script"
+    if ! scp_to "$tmp_script" "C:/winforge/$script_name" >/dev/null; then
+        rm -f "$tmp_script"
+        return 1
+    fi
     rm -f "$tmp_script"
-    return 1
-  fi
-  rm -f "$tmp_script"
-  ssh_cmd "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\winforge\\$script_name" 2>/dev/null |
-    tr -d '\r' |
-    grep -q '^OK$'
+    ssh_cmd "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\winforge\\$script_name" 2>/dev/null |
+        tr -d '\r' |
+        grep -q '^OK$'
 }
 
 mark_phase_done() {
-  local marker="$1"
-  ssh_cmd "powershell -NoProfile -Command \"\
+    local marker="$1"
+    ssh_cmd "powershell -NoProfile -Command \"\
 New-Item -ItemType Directory -Path 'C:\\winforge\\state\\setup-vm' -Force | Out-Null; \
 New-Item -ItemType File -Path 'C:\\winforge\\state\\setup-vm\\${marker}.done' -Force | Out-Null\"" >/dev/null
 }
 
 run_phase() {
-  local marker="$1" label="$2" verify_ps="$3" script_content="$4" script_name="$5"
-  if phase_satisfied "$marker" "$verify_ps"; then
-    echo "[=] Skipping ${label} (already satisfied)"
-    mark_phase_done "$marker"
-    return 0
-  fi
-  echo "[*] ${label}"
-  upload_and_run_ps1 "$script_content" "$script_name"
-  if phase_satisfied "$marker" "$verify_ps"; then
-    mark_phase_done "$marker"
-  else
-    echo "[-] ${label} did not satisfy verification after install" >&2
-    return 1
-  fi
+    local marker="$1" label="$2" verify_ps="$3" script_content="$4" script_name="$5"
+    if phase_satisfied "$marker" "$verify_ps"; then
+        echo "[=] Skipping ${label} (already satisfied)"
+        mark_phase_done "$marker"
+        return 0
+    fi
+    echo "[*] ${label}"
+    upload_and_run_ps1 "$script_content" "$script_name"
+    if phase_satisfied "$marker" "$verify_ps"; then
+        mark_phase_done "$marker"
+    else
+        echo "[-] ${label} did not satisfy verification after install" >&2
+        return 1
+    fi
 }
 
 write_tools_ready() {
-  upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/write_tools_ready.ps1")" "write_tools_ready.ps1" >/dev/null
+    upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/write_tools_ready.ps1")" "write_tools_ready.ps1" >/dev/null
 }
 
 echo "=== WinForge VM Setup ==="
@@ -297,13 +312,13 @@ upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/disable_security.ps1")" "dis
 # ── Deploy SSH key ─────────────────────────────────────────────────
 
 if [[ -f "$SSH_KEY" ]]; then
-  echo "[*] Deploying SSH key..."
-  upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/ssh_dirs.ps1")" "ssh_dirs.ps1"
-  scp_to "${SSH_KEY}.pub" "C:/Users/$VM_USER/.ssh/authorized_keys"
-  scp_to "${SSH_KEY}.pub" "C:/ProgramData/ssh/administrators_authorized_keys"
-  ssh_cmd 'icacls C:\ProgramData\ssh\administrators_authorized_keys /inheritance:r /grant Administrators:F /grant SYSTEM:F' >/dev/null
-  USE_KEY=true
-  echo "[+] SSH key deployed"
+    echo "[*] Deploying SSH key..."
+    upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/ssh_dirs.ps1")" "ssh_dirs.ps1"
+    scp_to "${SSH_KEY}.pub" "C:/Users/$VM_USER/.ssh/authorized_keys"
+    scp_to "${SSH_KEY}.pub" "C:/ProgramData/ssh/administrators_authorized_keys"
+    ssh_cmd 'icacls C:\ProgramData\ssh\administrators_authorized_keys /inheritance:r /grant Administrators:F /grant SYSTEM:F' >/dev/null
+    USE_KEY=true
+    echo "[+] SSH key deployed"
 fi
 
 # ── Set symbol path ────────────────────────────────────────────────
@@ -315,17 +330,17 @@ upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/set_symbols.ps1")" "set_symb
 
 CHOCOLATEY_BOOTSTRAP_OUTPUT=""
 if phase_satisfied "choco" 'if (Test-Path '\''C:\ProgramData\chocolatey\bin\choco.exe'\'') { Write-Output OK }'; then
-  echo "[=] Skipping Chocolatey (already satisfied)"
-  mark_phase_done "choco"
+    echo "[=] Skipping Chocolatey (already satisfied)"
+    mark_phase_done "choco"
 else
-  echo "[*] Installing Chocolatey..."
-  CHOCOLATEY_BOOTSTRAP_OUTPUT=$(upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/install_choco.ps1")" "install_choco.ps1")
-  printf '%s\n' "$CHOCOLATEY_BOOTSTRAP_OUTPUT"
-  mark_phase_done "choco"
+    echo "[*] Installing Chocolatey..."
+    CHOCOLATEY_BOOTSTRAP_OUTPUT=$(upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/install_choco.ps1")" "install_choco.ps1")
+    printf '%s\n' "$CHOCOLATEY_BOOTSTRAP_OUTPUT"
+    mark_phase_done "choco"
 fi
 
 if printf '%s\n' "$CHOCOLATEY_BOOTSTRAP_OUTPUT" | tr -d '\r' | grep -Eq 'reboot is required|need to restart this machine prior to using choco'; then
-  CHOCO_REBOOT_REQUIRED=true
+    CHOCO_REBOOT_REQUIRED=true
 # Registry-based reboot check. The previous version embedded $-variables and \"
 # escapes inside an outer 'powershell -NoProfile -Command "..."'. With Windows
 # OpenSSH DefaultShell set to powershell.exe, the OUTER powershell evaluates
@@ -335,16 +350,16 @@ if printf '%s\n' "$CHOCOLATEY_BOOTSTRAP_OUTPUT" | tr -d '\r' | grep -Eq 'reboot 
 # through. Rewritten to use exit codes, single-quoted PS strings (which survive
 # outer-PS evaluation unchanged), and no $-variables.
 elif ssh_cmd 'powershell -NoProfile -Command "if ((Test-Path C:\ProgramData\chocolatey\bin\choco.exe) -and ((Test-Path '"'"'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'"'"') -or (Test-Path '"'"'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'"'"') -or (Get-ItemProperty -Path '"'"'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager'"'"' -Name PendingFileRenameOperations -ErrorAction SilentlyContinue))) { exit 0 } else { exit 1 }"' 2>/dev/null; then
-  CHOCO_REBOOT_REQUIRED=true
+    CHOCO_REBOOT_REQUIRED=true
 else
-  CHOCO_REBOOT_REQUIRED=false
+    CHOCO_REBOOT_REQUIRED=false
 fi
 
 if [[ "$CHOCO_REBOOT_REQUIRED" == "true" ]]; then
-  echo "[*] Reboot required after Chocolatey bootstrap; rebooting now..."
-  ssh_cmd 'shutdown /r /t 5 /f' >/dev/null || true
-  sleep 15
-  wait_for_ssh "post-reboot SSH"
+    echo "[*] Reboot required after Chocolatey bootstrap; rebooting now..."
+    ssh_cmd 'shutdown /r /t 5 /f' >/dev/null || true
+    sleep 15
+    wait_for_ssh "post-reboot SSH"
 fi
 
 # ── Install Python, 7zip, Git ─────────────────────────────────────
@@ -421,10 +436,10 @@ python -c "import fastmcp, win32pipe; print(fastmcp.__version__)"
 # Deploy the HTTP transport wrapper (bound to 0.0.0.0:8100/mcp)
 echo "[*] Deploying windbg-mcp HTTP wrapper..."
 if [[ -f "$SCRIPT_DIR/windbg_mcp_http.py" ]]; then
-  scp_to "$SCRIPT_DIR/windbg_mcp_http.py" "C:/winforge/windbg-ext-mcp/run_http.py"
-  echo "[+] run_http.py deployed"
+    scp_to "$SCRIPT_DIR/windbg_mcp_http.py" "C:/winforge/windbg-ext-mcp/run_http.py"
+    echo "[+] run_http.py deployed"
 else
-  echo "[!] windbg_mcp_http.py missing at $SCRIPT_DIR"
+    echo "[!] windbg_mcp_http.py missing at $SCRIPT_DIR"
 fi
 
 # ── Install mcp-windbg (user-mode debugger MCP on :8300) ──────────
@@ -437,32 +452,32 @@ fi
 echo "[*] Installing mcp-windbg (vendored fork)..."
 MCP_WINDBG_SRC="$SCRIPT_DIR/third-party/mcp-windbg"
 if phase_satisfied "mcp_windbg" '$cli = Get-Command mcp-windbg -EA SilentlyContinue; if (-not $cli -and (Test-Path '\''C:\Python314\Scripts\mcp-windbg.exe'\'')) { $cli = Get-Item '\''C:\Python314\Scripts\mcp-windbg.exe'\'' }; if ($cli) { Write-Output OK }'; then
-  echo "[=] Skipping mcp-windbg (already satisfied)"
-  mark_phase_done "mcp_windbg"
-elif [[ -d "$MCP_WINDBG_SRC/src" ]]; then
-  TARBALL="$(mktemp /tmp/mcp-windbg-XXXXXX.tar.gz)"
-  tar -C "$MCP_WINDBG_SRC" -czf "$TARBALL" pyproject.toml src LICENSE README.md VENDORED.md
-  scp_to "$TARBALL" "C:/winforge/mcp-windbg-src.tar.gz"
-  rm -f "$TARBALL"
-  upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/install_mcp_windbg.ps1")" "install_mcp_windbg.ps1"
-  if phase_satisfied "mcp_windbg" '$cli = Get-Command mcp-windbg -EA SilentlyContinue; if (-not $cli -and (Test-Path '\''C:\Python314\Scripts\mcp-windbg.exe'\'')) { $cli = Get-Item '\''C:\Python314\Scripts\mcp-windbg.exe'\'' }; if ($cli) { Write-Output OK }'; then
+    echo "[=] Skipping mcp-windbg (already satisfied)"
     mark_phase_done "mcp_windbg"
-  else
-    echo "[-] mcp-windbg did not satisfy verification after install" >&2
-    exit 1
-  fi
+elif [[ -d "$MCP_WINDBG_SRC/src" ]]; then
+    TARBALL="$(mktemp /tmp/mcp-windbg-XXXXXX.tar.gz)"
+    tar -C "$MCP_WINDBG_SRC" -czf "$TARBALL" pyproject.toml src LICENSE README.md VENDORED.md
+    scp_to "$TARBALL" "C:/winforge/mcp-windbg-src.tar.gz"
+    rm -f "$TARBALL"
+    upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/install_mcp_windbg.ps1")" "install_mcp_windbg.ps1"
+    if phase_satisfied "mcp_windbg" '$cli = Get-Command mcp-windbg -EA SilentlyContinue; if (-not $cli -and (Test-Path '\''C:\Python314\Scripts\mcp-windbg.exe'\'')) { $cli = Get-Item '\''C:\Python314\Scripts\mcp-windbg.exe'\'' }; if ($cli) { Write-Output OK }'; then
+        mark_phase_done "mcp_windbg"
+    else
+        echo "[-] mcp-windbg did not satisfy verification after install" >&2
+        exit 1
+    fi
 else
-  echo "[!] Missing vendored mcp-windbg at $MCP_WINDBG_SRC — :8300 will not come up"
+    echo "[!] Missing vendored mcp-windbg at $MCP_WINDBG_SRC — :8300 will not come up"
 fi
 
 # Deploy kd_wrapper.py — the Python process that starts kd.exe and keeps
 # its stdin pipe open so kd never exits (run by DebuggerBoot scheduled task).
 echo "[*] Deploying kd_wrapper.py..."
 if [[ -f "$SCRIPT_DIR/kd_wrapper.py" ]]; then
-  scp_to "$SCRIPT_DIR/kd_wrapper.py" "C:/winforge/kd_wrapper.py"
-  echo "[+] kd_wrapper.py deployed"
+    scp_to "$SCRIPT_DIR/kd_wrapper.py" "C:/winforge/kd_wrapper.py"
+    echo "[+] kd_wrapper.py deployed"
 else
-  echo "[!] kd_wrapper.py missing at $SCRIPT_DIR (DebuggerBoot will fail)"
+    echo "[!] kd_wrapper.py missing at $SCRIPT_DIR (DebuggerBoot will fail)"
 fi
 
 # ── Install Node.js + DesktopCommanderMCP ────────────────────────
@@ -484,10 +499,10 @@ run_phase "desktop_commander" "Installing DesktopCommanderMCP" 'if (Test-Path '\
 
 echo "[*] Deploying target_mcp_http.py..."
 if [[ -f "$SCRIPT_DIR/target_mcp_http.py" ]]; then
-  scp_to "$SCRIPT_DIR/target_mcp_http.py" "C:/winforge/target_mcp_http.py"
-  echo "[+] target_mcp_http.py deployed"
+    scp_to "$SCRIPT_DIR/target_mcp_http.py" "C:/winforge/target_mcp_http.py"
+    echo "[+] target_mcp_http.py deployed"
 else
-  echo "[!] target_mcp_http.py missing — TargetDesktopBoot will fail"
+    echo "[!] target_mcp_http.py missing — TargetDesktopBoot will fail"
 fi
 
 # ── QEMU guest agent + vioserial driver ───────────────────────────
@@ -502,40 +517,43 @@ fi
 # msiexec from that staging dir.
 QGA_VERIFY='$svc = Get-Service QEMU-GA -EA SilentlyContinue; if ($svc -and $svc.StartType -eq "Automatic") { Write-Output OK }'
 if phase_satisfied "qga" "$QGA_VERIFY"; then
-  echo "[=] Skipping QEMU guest agent (already satisfied)"
-  mark_phase_done "qga"
-else
-  echo "[*] Staging virtio-win files for qga install"
-  VIRTIO_ISO="$REPO_ROOT/vm-images/virtio-win.iso"
-  [[ -f "$VIRTIO_ISO" ]] || { echo "[-] $VIRTIO_ISO missing — re-run install-deps.sh" >&2; exit 1; }
-  VIRTIO_MNT="$(mktemp -d)"
-  if ! sudo -n mount -o loop,ro "$VIRTIO_ISO" "$VIRTIO_MNT" 2>/dev/null; then
-    echo "[-] could not mount $VIRTIO_ISO — needs passwordless sudo to mount loop ISOs" >&2
-    rmdir "$VIRTIO_MNT"
-    exit 1
-  fi
-  VIRTIO_STAGE="$(mktemp -d)"
-  cp "$VIRTIO_MNT/vioserial/w11/amd64/vioser.inf"        "$VIRTIO_STAGE/"
-  cp "$VIRTIO_MNT/vioserial/w11/amd64/vioser.cat"        "$VIRTIO_STAGE/"
-  cp "$VIRTIO_MNT/vioserial/w11/amd64/vioser.sys"        "$VIRTIO_STAGE/"
-  cp "$VIRTIO_MNT/guest-agent/qemu-ga-x86_64.msi"        "$VIRTIO_STAGE/"
-  sudo -n umount "$VIRTIO_MNT"
-  rmdir "$VIRTIO_MNT"
-
-  ssh_cmd 'powershell -NoProfile -Command "New-Item -ItemType Directory -Path C:\winforge\virtio-stage -Force | Out-Null"' >/dev/null
-  for f in "$VIRTIO_STAGE"/*; do
-    scp_to "$f" "C:/winforge/virtio-stage/$(basename "$f")" >/dev/null
-  done
-  rm -rf "$VIRTIO_STAGE"
-
-  echo "[*] Installing vioserial driver + QEMU guest agent"
-  upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/install_qga.ps1")" "install_qga.ps1"
-  if phase_satisfied "qga" "$QGA_VERIFY"; then
+    echo "[=] Skipping QEMU guest agent (already satisfied)"
     mark_phase_done "qga"
-  else
-    echo "[-] QEMU guest agent did not satisfy verification after install" >&2
-    exit 1
-  fi
+else
+    echo "[*] Staging virtio-win files for qga install"
+    VIRTIO_ISO="$REPO_ROOT/vm-images/virtio-win.iso"
+    [[ -f "$VIRTIO_ISO" ]] || {
+        echo "[-] $VIRTIO_ISO missing — re-run install-deps.sh" >&2
+        exit 1
+    }
+    VIRTIO_MNT="$(mktemp -d)"
+    if ! sudo -n mount -o loop,ro "$VIRTIO_ISO" "$VIRTIO_MNT" 2>/dev/null; then
+        echo "[-] could not mount $VIRTIO_ISO — needs passwordless sudo to mount loop ISOs" >&2
+        rmdir "$VIRTIO_MNT"
+        exit 1
+    fi
+    VIRTIO_STAGE="$(mktemp -d)"
+    cp "$VIRTIO_MNT/vioserial/w11/amd64/vioser.inf" "$VIRTIO_STAGE/"
+    cp "$VIRTIO_MNT/vioserial/w11/amd64/vioser.cat" "$VIRTIO_STAGE/"
+    cp "$VIRTIO_MNT/vioserial/w11/amd64/vioser.sys" "$VIRTIO_STAGE/"
+    cp "$VIRTIO_MNT/guest-agent/qemu-ga-x86_64.msi" "$VIRTIO_STAGE/"
+    sudo -n umount "$VIRTIO_MNT"
+    rmdir "$VIRTIO_MNT"
+
+    ssh_cmd 'powershell -NoProfile -Command "New-Item -ItemType Directory -Path C:\winforge\virtio-stage -Force | Out-Null"' >/dev/null
+    for f in "$VIRTIO_STAGE"/*; do
+        scp_to "$f" "C:/winforge/virtio-stage/$(basename "$f")" >/dev/null
+    done
+    rm -rf "$VIRTIO_STAGE"
+
+    echo "[*] Installing vioserial driver + QEMU guest agent"
+    upload_and_run_ps1 "$(<"$SCRIPT_DIR/setup-vm-phases/install_qga.ps1")" "install_qga.ps1"
+    if phase_satisfied "qga" "$QGA_VERIFY"; then
+        mark_phase_done "qga"
+    else
+        echo "[-] QEMU guest agent did not satisfy verification after install" >&2
+        exit 1
+    fi
 fi
 
 # VMware Tools is installed by backend/vmware.sh::_vmware_install_tools_in_gold

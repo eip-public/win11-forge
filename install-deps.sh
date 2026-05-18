@@ -50,7 +50,7 @@ PIPX_PKGS=(
 BINEXPORT_URL="${BINEXPORT_URL:-https://github.com/google/binexport/releases/download/v12-20240417-ghidra_11.0.3/BinExport_Ghidra-Java.zip}"
 BINEXPORT_CACHE="${BINEXPORT_CACHE:-/opt/ghidra-extensions/BinExport_Ghidra-Java.zip}"
 
-log()  { printf '\033[1;36m[*]\033[0m %s\n' "$*"; }
+log() { printf '\033[1;36m[*]\033[0m %s\n' "$*"; }
 # shellcheck source=vm-setup/lib/log.sh
 . "$(dirname "${BASH_SOURCE[0]}")/vm-setup/lib/log.sh"
 
@@ -194,8 +194,9 @@ ensure_libvirt_dns_forwarders() {
         return 0
     fi
     log "Adding DNS forwarders (1.1.1.1, 8.8.8.8) to libvirt default network"
-    local xml; xml="$(mktemp)"
-    "${SUDO[@]}" virsh net-dumpxml default > "$xml"
+    local xml
+    xml="$(mktemp)"
+    "${SUDO[@]}" virsh net-dumpxml default >"$xml"
     python3 - "$xml" <<'PY'
 import sys, xml.etree.ElementTree as ET
 path = sys.argv[1]
@@ -225,7 +226,10 @@ check_mode() {
     local fail=0
 
     printf '  %-40s ' "/dev/kvm:"
-    if [[ -e /dev/kvm ]]; then ok "present"; else warn "missing (enable VT-x/AMD-V)"; fail=1; fi
+    if [[ -e /dev/kvm ]]; then ok "present"; else
+        warn "missing (enable VT-x/AMD-V)"
+        fail=1
+    fi
 
     local p
     for p in "${APT_PKGS[@]}"; do
@@ -261,17 +265,26 @@ check_mode() {
     if [[ -f "$IMAGES_DIR/$VIRTIO_ISO_NAME" ]]; then ok "present"; else warn "missing (install mode will download unless WINFORGE_SKIP_ISO_DOWNLOAD=1)"; fi
 
     printf '  %-40s ' "group: libvirt ($TARGET_USER):"
-    if id -nG "$TARGET_USER" 2>/dev/null | tr ' ' '\n' | grep -qx libvirt; then ok "yes"; else warn "no"; fail=1; fi
+    if id -nG "$TARGET_USER" 2>/dev/null | tr ' ' '\n' | grep -qx libvirt; then ok "yes"; else
+        warn "no"
+        fail=1
+    fi
 
     printf '  %-40s ' "group: kvm ($TARGET_USER):"
-    if id -nG "$TARGET_USER" 2>/dev/null | tr ' ' '\n' | grep -qx kvm; then ok "yes"; else warn "no"; fail=1; fi
+    if id -nG "$TARGET_USER" 2>/dev/null | tr ' ' '\n' | grep -qx kvm; then ok "yes"; else
+        warn "no"
+        fail=1
+    fi
 
     printf '  %-40s ' "libvirtd service:"
-    if systemctl is-active --quiet libvirtd 2>/dev/null; then ok "active"; else warn "inactive"; fail=1; fi
+    if systemctl is-active --quiet libvirtd 2>/dev/null; then ok "active"; else
+        warn "inactive"
+        fail=1
+    fi
 
     printf '  %-40s ' "libvirt default network:"
-    if "${SUDO[@]}" virsh net-info default >/dev/null 2>&1 && \
-       [[ "$("${SUDO[@]}" virsh net-info default 2>/dev/null | awk '/^Active:/ {print $2}')" == "yes" ]]; then
+    if "${SUDO[@]}" virsh net-info default >/dev/null 2>&1 &&
+        [[ "$("${SUDO[@]}" virsh net-info default 2>/dev/null | awk '/^Active:/ {print $2}')" == "yes" ]]; then
         ok "active"
     else
         warn "inactive or missing"
@@ -281,8 +294,8 @@ check_mode() {
     local target_home
     target_home="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
     printf '  %-40s ' "libvirt-qemu ACL on $target_home:"
-    if [[ -n "$target_home" && -d "$target_home" ]] && \
-       getfacl --absolute-names "$target_home" 2>/dev/null | grep -qE '^user:libvirt-qemu:.*x'; then
+    if [[ -n "$target_home" && -d "$target_home" ]] &&
+        getfacl --absolute-names "$target_home" 2>/dev/null | grep -qE '^user:libvirt-qemu:.*x'; then
         ok "traverse granted"
     else
         warn "missing (VM image access will fail)"
@@ -366,10 +379,10 @@ vmware_mode() {
     # Pin the lab pair's MACs to .100/.101 in vmnet8's dhcpd. Idempotent.
     # Required when running the lab under WINFORGE_BACKEND=vmware so the
     # VMs land on predictable IPs (matches the KVM convention).
-    command -v vmrun >/dev/null \
-        || die "vmrun not found. Install VMware Workstation first."
-    [[ -d /etc/vmware/vmnet8 ]] \
-        || die "/etc/vmware/vmnet8 missing. Has VMware Workstation completed first-run setup?"
+    command -v vmrun >/dev/null ||
+        die "vmrun not found. Install VMware Workstation first."
+    [[ -d /etc/vmware/vmnet8 ]] ||
+        die "/etc/vmware/vmnet8 missing. Has VMware Workstation completed first-run setup?"
 
     local conf=/etc/vmware/vmnet8/dhcpd/dhcpd.conf
     [[ -f "$conf" ]] || die "$conf missing"
@@ -407,8 +420,8 @@ EOF
 
     log "Restarting vmware-networks so dhcpd picks up the new reservations"
     "${SUDO[@]}" vmware-networks --stop >/dev/null 2>&1 || true
-    "${SUDO[@]}" vmware-networks --start >/dev/null \
-        || die "vmware-networks --start failed"
+    "${SUDO[@]}" vmware-networks --start >/dev/null ||
+        die "vmware-networks --start failed"
     ok "vmnet8 dhcpd reloaded"
 
     printf '\n  Verify with:\n'

@@ -70,14 +70,14 @@ wait_for_ssh() {
     # `timeout` runs an executable, not a shell function — invoke ssh
     # directly so the timeout actually applies (using ssh_cmd here would
     # silently fail with rc=127 every iteration).
-    while (( elapsed < max_wall_s )); do
+    while ((elapsed < max_wall_s)); do
         if timeout "$probe_timeout_s" \
             ssh -i "$SSH_KEY" "${SSH_OPTS_COMMON[@]}" \
-                -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
-                "$VM_USER@$VM_IP" 'echo ok' >/dev/null 2>&1; then
+            -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
+            "$VM_USER@$VM_IP" 'echo ok' >/dev/null 2>&1; then
             ok_count=$((ok_count + 1))
             consecutive_ok=$((consecutive_ok + 1))
-            if (( consecutive_ok >= stable_ok_required )); then
+            if ((consecutive_ok >= stable_ok_required)); then
                 echo "[+] $label ready (${ok_count} OK / ${fail_count} fail over ${elapsed}s)"
                 return 0
             fi
@@ -106,14 +106,17 @@ verify_schtask_running() {
         # `|| true` on the assignment: under set -euo pipefail an ssh failure
         # inside $(...) would otherwise kill the caller before this loop's
         # retry/timeout branch can run.
-        status=$(ssh_cmd "schtasks /Query /TN \"$task\" /V /FO LIST" 2>/dev/null \
-            | tr -d '\r' | awk -F: '/^Status:/ {sub(/^[ \t]+/,"",$2); print $2; exit}') || true
-        [[ "$status" == "Running" ]] && { echo "[+] $task is running"; return 0; }
+        status=$(ssh_cmd "schtasks /Query /TN \"$task\" /V /FO LIST" 2>/dev/null |
+            tr -d '\r' | awk -F: '/^Status:/ {sub(/^[ \t]+/,"",$2); print $2; exit}') || true
+        [[ "$status" == "Running" ]] && {
+            echo "[+] $task is running"
+            return 0
+        }
         sleep 1
     done
     echo "[-] $task did not reach Status=Running within ${max}s (last='$status')" >&2
-    ssh_cmd "schtasks /Query /TN \"$task\" /V /FO LIST" 2>/dev/null \
-        | tr -d '\r' | grep -iE "Status|Last Result|Last Run Time" >&2 || true
+    ssh_cmd "schtasks /Query /TN \"$task\" /V /FO LIST" 2>/dev/null |
+        tr -d '\r' | grep -iE "Status|Last Result|Last Run Time" >&2 || true
     return 1
 }
 
@@ -150,13 +153,13 @@ echo "[*] Registering DebuggerBoot scheduled task"
 # guest_powershell prefers qga when available; for the legacy ssh path it
 # loses retry semantics retry_ssh_cmd had, but qga's primary path is more
 # reliable than ssh retry-after-wedge so the trade is in our favour.
-guest_powershell 'schtasks /Create /TN DebuggerBoot /TR "C:\Python314\python.exe C:\winforge\kd_wrapper.py" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null \
-  || retry_ssh_cmd 'schtasks /Create /TN DebuggerBoot /TR "C:\\Python314\\python.exe C:\\winforge\\kd_wrapper.py" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null
+guest_powershell 'schtasks /Create /TN DebuggerBoot /TR "C:\Python314\python.exe C:\winforge\kd_wrapper.py" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null ||
+    retry_ssh_cmd 'schtasks /Create /TN DebuggerBoot /TR "C:\\Python314\\python.exe C:\\winforge\\kd_wrapper.py" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null
 ok "DebuggerBoot task registered"
 
 echo "[*] Starting DebuggerBoot now"
-guest_powershell 'schtasks /Run /TN DebuggerBoot' >/dev/null \
-  || retry_ssh_cmd 'schtasks /Run /TN DebuggerBoot' >/dev/null
+guest_powershell 'schtasks /Run /TN DebuggerBoot' >/dev/null ||
+    retry_ssh_cmd 'schtasks /Run /TN DebuggerBoot' >/dev/null
 verify_schtask_running DebuggerBoot
 
 # Give the wrapper time to start kd.exe and attempt the KDNET connection.
@@ -183,13 +186,13 @@ else
 fi
 
 echo "[*] Registering DebuggerDesktopBoot scheduled task (port 8201)"
-guest_powershell 'schtasks /Create /TN DebuggerDesktopBoot /TR "C:\Python314\python.exe C:\winforge\target_mcp_http.py --port 8201" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null \
-  || retry_ssh_cmd 'schtasks /Create /TN DebuggerDesktopBoot /TR "C:\\Python314\\python.exe C:\\winforge\\target_mcp_http.py --port 8201" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null
+guest_powershell 'schtasks /Create /TN DebuggerDesktopBoot /TR "C:\Python314\python.exe C:\winforge\target_mcp_http.py --port 8201" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null ||
+    retry_ssh_cmd 'schtasks /Create /TN DebuggerDesktopBoot /TR "C:\\Python314\\python.exe C:\\winforge\\target_mcp_http.py --port 8201" /SC ONSTART /RU SYSTEM /RL HIGHEST /F' >/dev/null
 ok "DebuggerDesktopBoot task registered"
 
 echo "[*] Starting DebuggerDesktopBoot now"
-guest_powershell 'schtasks /Run /TN DebuggerDesktopBoot' >/dev/null \
-  || retry_ssh_cmd 'schtasks /Run /TN DebuggerDesktopBoot' >/dev/null
+guest_powershell 'schtasks /Run /TN DebuggerDesktopBoot' >/dev/null ||
+    retry_ssh_cmd 'schtasks /Run /TN DebuggerDesktopBoot' >/dev/null
 verify_schtask_running DebuggerDesktopBoot
 
 # Wait for HTTP up then configure via API
@@ -213,9 +216,9 @@ if [[ "$status" == "200" ]]; then
     # shellcheck disable=SC2034
     DC_URL="http://$VM_IP:8201/mcp"
     dc_init
-    dc_set "blockedCommands"    "[]"
+    dc_set "blockedCommands" "[]"
     dc_set "allowedDirectories" "[\"C:\\\\\\\\\"]"
-    dc_set "telemetryEnabled"   "false"
+    dc_set "telemetryEnabled" "false"
     ok "DesktopCommander configured on debugger (port 8201)"
 
     # Disable DC's "welcome onboarding" — emits a prompt-injection block

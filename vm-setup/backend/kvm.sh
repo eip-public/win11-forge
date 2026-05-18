@@ -41,7 +41,7 @@ TARGET_NAME="winforge-target"
 DEBUGGER_NAME="winforge-debugger"
 TARGET_IP="192.168.122.100"
 DEBUGGER_IP="192.168.122.101"
-TARGET_MAC="$KVM_TARGET_MAC"        # QEMU OUI 52:54:00; libvirt-friendly
+TARGET_MAC="$KVM_TARGET_MAC" # QEMU OUI 52:54:00; libvirt-friendly
 DEBUGGER_MAC="$KVM_DEBUGGER_MAC"
 
 backend_name() { echo "kvm"; }
@@ -53,15 +53,18 @@ backend_name() { echo "kvm"; }
 
 _kvm_role_to_name() {
     case "$1" in
-        target)   echo "$TARGET_NAME" ;;
+        target) echo "$TARGET_NAME" ;;
         debugger) echo "$DEBUGGER_NAME" ;;
-        *)        echo "backend/kvm.sh: unknown role '$1'" >&2; return 1 ;;
+        *)
+            echo "backend/kvm.sh: unknown role '$1'" >&2
+            return 1
+            ;;
     esac
 }
 
 _kvm_role_to_mac() {
     case "$1" in
-        target)   echo "$TARGET_MAC" ;;
+        target) echo "$TARGET_MAC" ;;
         debugger) echo "$DEBUGGER_MAC" ;;
     esac
 }
@@ -69,13 +72,28 @@ _kvm_role_to_mac() {
 # ── Preflight ─────────────────────────────────────────────────────
 
 backend_preflight() {
-    [[ -e /dev/kvm ]] || { echo "KVM not available. Enable VT-x/AMD-V or check /dev/kvm perms." >&2; return 1; }
-    command -v virsh >/dev/null    || { echo "virsh missing. Run ./install-deps.sh" >&2; return 1; }
-    command -v qemu-img >/dev/null || { echo "qemu-img missing. Run ./install-deps.sh" >&2; return 1; }
-    virsh net-info default >/dev/null 2>&1 \
-        || { echo "libvirt 'default' network missing. sudo virsh net-autostart default && sudo virsh net-start default" >&2; return 1; }
-    [[ "$(virsh net-info default 2>/dev/null | awk '/^Active:/ {print $2}')" == "yes" ]] \
-        || { echo "libvirt 'default' network inactive. sudo virsh net-start default" >&2; return 1; }
+    [[ -e /dev/kvm ]] || {
+        echo "KVM not available. Enable VT-x/AMD-V or check /dev/kvm perms." >&2
+        return 1
+    }
+    command -v virsh >/dev/null || {
+        echo "virsh missing. Run ./install-deps.sh" >&2
+        return 1
+    }
+    command -v qemu-img >/dev/null || {
+        echo "qemu-img missing. Run ./install-deps.sh" >&2
+        return 1
+    }
+    virsh net-info default >/dev/null 2>&1 ||
+        {
+            echo "libvirt 'default' network missing. sudo virsh net-autostart default && sudo virsh net-start default" >&2
+            return 1
+        }
+    [[ "$(virsh net-info default 2>/dev/null | awk '/^Active:/ {print $2}')" == "yes" ]] ||
+        {
+            echo "libvirt 'default' network inactive. sudo virsh net-start default" >&2
+            return 1
+        }
 }
 
 # Add MAC->IP reservations to libvirt's default-network dnsmasq.
@@ -87,11 +105,12 @@ backend_ensure_network() {
     )
     local entry mac ip
     for entry in "${entries[@]}"; do
-        mac="${entry%%|*}"; ip="${entry##*|}"
+        mac="${entry%%|*}"
+        ip="${entry##*|}"
         if ! virsh net-dumpxml default | grep -qF "mac='$mac'"; then
             virsh net-update default add ip-dhcp-host \
-                "<host mac='$mac' ip='$ip'/>" --live --config >/dev/null 2>&1 \
-              || echo "[!] Could not add DHCP reservation for $mac -> $ip (may already exist)" >&2
+                "<host mac='$mac' ip='$ip'/>" --live --config >/dev/null 2>&1 ||
+                echo "[!] Could not add DHCP reservation for $mac -> $ip (may already exist)" >&2
         fi
     done
 }
@@ -100,13 +119,18 @@ backend_ensure_network() {
 
 vm_provision() {
     local role="$1" ram="$2"
-    local vm_name; vm_name="$(_kvm_role_to_name "$role")" || return 1
-    local mac;     mac="$(_kvm_role_to_mac "$role")"
+    local vm_name
+    vm_name="$(_kvm_role_to_name "$role")" || return 1
+    local mac
+    mac="$(_kvm_role_to_mac "$role")"
     local gold="$IMAGES_DIR/${VM_NAME}-gold.qcow2"
     local overlay="$IMAGES_DIR/${vm_name}.qcow2"
     local nvram="$IMAGES_DIR/${vm_name}-OVMF_VARS.fd"
 
-    [[ -f "$gold" ]] || { echo "No gold at $gold. Run './setup.sh install' first." >&2; return 1; }
+    [[ -f "$gold" ]] || {
+        echo "No gold at $gold. Run './setup.sh install' first." >&2
+        return 1
+    }
 
     if virsh dominfo "$vm_name" >/dev/null 2>&1; then
         virsh_or_warn destroy "$vm_name"
@@ -129,7 +153,8 @@ vm_provision() {
         cp /usr/share/OVMF/OVMF_VARS_4M.fd "$nvram"
     fi
 
-    local xml; xml="$(mktemp)"
+    local xml
+    xml="$(mktemp)"
     cat >"$xml" <<XML
 <domain type='kvm'>
   <name>$vm_name</name>
@@ -182,7 +207,8 @@ XML
 
 vm_start() {
     local role="$1" mode="${2:-nogui}"
-    local vm_name; vm_name="$(_kvm_role_to_name "$role")" || return 1
+    local vm_name
+    vm_name="$(_kvm_role_to_name "$role")" || return 1
     virsh start "$vm_name" >/dev/null
     if [[ "$mode" == "gui" ]] && command -v virt-viewer >/dev/null 2>&1; then
         virt-viewer --connect qemu:///system "$vm_name" >/dev/null 2>&1 &
@@ -191,7 +217,8 @@ vm_start() {
 
 vm_force_stop() {
     local role="$1"
-    local vm_name; vm_name="$(_kvm_role_to_name "$role")" || return 1
+    local vm_name
+    vm_name="$(_kvm_role_to_name "$role")" || return 1
     if virsh dominfo "$vm_name" >/dev/null 2>&1; then
         virsh_or_warn destroy "$vm_name"
     fi
@@ -199,7 +226,8 @@ vm_force_stop() {
 
 vm_undefine() {
     local role="$1"
-    local vm_name; vm_name="$(_kvm_role_to_name "$role")" || return 1
+    local vm_name
+    vm_name="$(_kvm_role_to_name "$role")" || return 1
     if virsh dominfo "$vm_name" >/dev/null 2>&1; then
         virsh_or_warn destroy "$vm_name"
         virsh_or_warn undefine "$vm_name" --nvram
@@ -209,10 +237,15 @@ vm_undefine() {
 
 vm_state() {
     local role="$1"
-    local vm_name; vm_name="$(_kvm_role_to_name "$role")" || return 1
-    local s; s="$(virsh domstate "$vm_name" 2>/dev/null)" || { echo "undefined"; return; }
+    local vm_name
+    vm_name="$(_kvm_role_to_name "$role")" || return 1
+    local s
+    s="$(virsh domstate "$vm_name" 2>/dev/null)" || {
+        echo "undefined"
+        return
+    }
     case "$s" in
-        running)    echo "running" ;;
+        running) echo "running" ;;
         "shut off") echo "stopped" ;;
         *)
             # paused, pmsuspended, "in shutdown", crashed, etc. Treat as "running"
@@ -220,19 +253,22 @@ vm_state() {
             # non-stopped state) instead of skipping. Matches vmware.sh's
             # three-value contract: running / stopped / undefined.
             echo "[kvm vm_state] $vm_name in non-canonical state '$s' — treating as running" >&2
-            echo "running" ;;
+            echo "running"
+            ;;
     esac
 }
 
 vm_exists() {
     local role="$1"
-    local vm_name; vm_name="$(_kvm_role_to_name "$role")" || return 1
+    local vm_name
+    vm_name="$(_kvm_role_to_name "$role")" || return 1
     virsh dominfo "$vm_name" >/dev/null 2>&1
 }
 
 vm_console_open() {
     local role="$1"
-    local vm_name; vm_name="$(_kvm_role_to_name "$role")" || return 1
+    local vm_name
+    vm_name="$(_kvm_role_to_name "$role")" || return 1
     if command -v virt-viewer >/dev/null 2>&1; then
         virt-viewer --connect qemu:///system "$vm_name" >/dev/null 2>&1 &
     elif command -v virt-manager >/dev/null 2>&1; then

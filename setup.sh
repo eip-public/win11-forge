@@ -72,8 +72,11 @@ VM_RAM="${VM_RAM:-8192}"
 # and the constants TARGET_NAME/IP/MAC + DEBUGGER_NAME/IP/MAC.
 WINFORGE_BACKEND="${WINFORGE_BACKEND:-kvm}"
 case "$WINFORGE_BACKEND" in
-    kvm|vmware) ;;
-    *) printf '\033[1;31m[-]\033[0m WINFORGE_BACKEND must be kvm or vmware (got: %s)\n' "$WINFORGE_BACKEND" >&2; exit 1 ;;
+    kvm | vmware) ;;
+    *)
+        printf '\033[1;31m[-]\033[0m WINFORGE_BACKEND must be kvm or vmware (got: %s)\n' "$WINFORGE_BACKEND" >&2
+        exit 1
+        ;;
 esac
 # shellcheck source=vm-setup/backend/kvm.sh
 source "$VM_SETUP/backend/$WINFORGE_BACKEND.sh"
@@ -84,7 +87,7 @@ VIRTIO_ISO_NAME="virtio-win.iso"
 
 # ── logging ────────────────────────────────────────────────────────
 
-log()  { printf '\033[1;36m[%s]\033[0m %s\n' "$(date -u +%H:%M:%S)" "$*"; }
+log() { printf '\033[1;36m[%s]\033[0m %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 # shellcheck source=vm-setup/lib/log.sh
 . "$VM_SETUP/lib/log.sh"
 # shellcheck source=vm-setup/lib/virsh-helpers.sh
@@ -108,7 +111,7 @@ preflight() {
     fi
 
     virsh net-info default >/dev/null 2>&1 || die "libvirt 'default' network missing. Run: sudo virsh net-autostart default && sudo virsh net-start default"
-    [[ "$(virsh net-info default 2>/dev/null | awk '/^Active:/ {print $2}')" == "yes" ]] || \
+    [[ "$(virsh net-info default 2>/dev/null | awk '/^Active:/ {print $2}')" == "yes" ]] ||
         die "libvirt 'default' network not active. Run: sudo virsh net-start default"
 
     ensure_dhcp_reservations
@@ -122,8 +125,8 @@ preflight() {
 ensure_dhcp_reservations() {
     if ! virsh net-dumpxml default | grep -qF "mac='$VM_MAC'"; then
         virsh net-update default add ip-dhcp-host \
-            "<host mac='$VM_MAC' ip='$VM_IP'/>" --live --config >/dev/null 2>&1 \
-          || warn "Could not add DHCP reservation for $VM_MAC -> $VM_IP (may already exist)"
+            "<host mac='$VM_MAC' ip='$VM_IP'/>" --live --config >/dev/null 2>&1 ||
+            warn "Could not add DHCP reservation for $VM_MAC -> $VM_IP (may already exist)"
     fi
 }
 
@@ -135,7 +138,7 @@ stage_isos() {
             mv -v "$ISOS_DIR/$f" "$IMAGES_DIR/$f"
         fi
     done
-    [[ -f "$IMAGES_DIR/$WIN_ISO_NAME"    ]] || die "Missing $IMAGES_DIR/$WIN_ISO_NAME (download from https://go.microsoft.com/fwlink/?linkid=2270353)"
+    [[ -f "$IMAGES_DIR/$WIN_ISO_NAME" ]] || die "Missing $IMAGES_DIR/$WIN_ISO_NAME (download from https://go.microsoft.com/fwlink/?linkid=2270353)"
     [[ -f "$IMAGES_DIR/$VIRTIO_ISO_NAME" ]] || die "Missing $IMAGES_DIR/$VIRTIO_ISO_NAME (download from https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso)"
 
     rmdir "$ISOS_DIR" 2>/dev/null || true
@@ -176,7 +179,7 @@ preflight_clean_mac_collisions() {
         local d hint=""
         for d in "${running[@]}"; do
             case "$d" in
-                winforge-target|winforge-debugger)
+                winforge-target | winforge-debugger)
                     hint+="./setup.sh lab destroy   # for $d"$'\n'
                     ;;
                 *)
@@ -193,8 +196,8 @@ preflight_clean_mac_collisions() {
     if [[ ${#winforge_stale[@]} -gt 0 ]]; then
         log "Clearing stale winforge-* domains on $VM_MAC: ${winforge_stale[*]}"
         for vm in "${winforge_stale[@]}"; do
-            virsh undefine "$vm" --nvram >/dev/null 2>&1 \
-                || warn "Failed to undefine $vm (may leave MAC collision)"
+            virsh undefine "$vm" --nvram >/dev/null 2>&1 ||
+                warn "Failed to undefine $vm (may leave MAC collision)"
         done
         ok "MAC collisions cleared"
     fi
@@ -229,8 +232,8 @@ preflight_lab_mac_collisions() {
     if [[ ${#stale[@]} -gt 0 ]]; then
         log "Clearing stopped winforge-* domain(s) on lab MACs: ${stale[*]}"
         for vm in "${stale[@]}"; do
-            virsh undefine "$vm" --nvram >/dev/null 2>&1 \
-                || die "Failed to undefine stale domain $vm holding a lab MAC"
+            virsh undefine "$vm" --nvram >/dev/null 2>&1 ||
+                die "Failed to undefine stale domain $vm holding a lab MAC"
         done
     fi
 }
@@ -325,7 +328,7 @@ cmd_reset() {
     # Rewrite the VM's disk source to point at the new overlay.
     local tmp
     tmp="$(mktemp)"
-    virsh dumpxml "$VM_NAME" > "$tmp"
+    virsh dumpxml "$VM_NAME" >"$tmp"
     python3 "$VM_SETUP/lib/set-disk-source.py" "$tmp" "$working"
     virsh define "$tmp" >/dev/null
     rm -f "$tmp"
@@ -346,7 +349,10 @@ cmd_stop() {
     log "Graceful shutdown (60s grace)"
     virsh_or_warn shutdown "$VM_NAME"
     for _ in $(seq 1 12); do
-        [[ "$(virsh domstate "$VM_NAME" 2>/dev/null)" == "shut off" ]] && { ok "Stopped"; return; }
+        [[ "$(virsh domstate "$VM_NAME" 2>/dev/null)" == "shut off" ]] && {
+            ok "Stopped"
+            return
+        }
         sleep 5
     done
     warn "Grace period expired — forcing off"
@@ -401,7 +407,7 @@ _lab_wait_ssh() {
     role="$([[ "$ip" == "$TARGET_IP" ]] && echo target || echo debugger)"
     local domain
     case "$role" in
-        target)   domain="$TARGET_NAME" ;;
+        target) domain="$TARGET_NAME" ;;
         debugger) domain="$DEBUGGER_NAME" ;;
     esac
 
@@ -410,13 +416,13 @@ _lab_wait_ssh() {
     # This avoids running ALL transports every poll on a legacy gold.
     local transport=ssh
     local vmx=""
-    if [[ "$WINFORGE_BACKEND" == "kvm" ]] && [[ -n "$domain" ]] \
-       && python3 "$VM_SETUP/lib/qga.py" ping "$domain" 2>/dev/null; then
+    if [[ "$WINFORGE_BACKEND" == "kvm" ]] && [[ -n "$domain" ]] &&
+        python3 "$VM_SETUP/lib/qga.py" ping "$domain" 2>/dev/null; then
         transport=qga
     elif [[ "$WINFORGE_BACKEND" == "vmware" ]]; then
         vmx="$(_vmware_vmx_path "$role" 2>/dev/null || true)"
-        if [[ -n "$vmx" && -f "$vmx" ]] \
-           && python3 "$VM_SETUP/lib/vmrun.py" ping "$vmx" 2>/dev/null; then
+        if [[ -n "$vmx" && -f "$vmx" ]] &&
+            python3 "$VM_SETUP/lib/vmrun.py" ping "$vmx" 2>/dev/null; then
             transport=vmrun
         fi
     fi
@@ -426,7 +432,7 @@ _lab_wait_ssh() {
     local consecutive_ok=0 elapsed=0 next_diag=$diag_every_s
     local last_fail="" ok_count=0 fail_count=0
 
-    while (( elapsed < max_wall_s )); do
+    while ((elapsed < max_wall_s)); do
         local rc=0 probe_out=""
         if [[ "$transport" == "qga" ]]; then
             # qga path: ping + confirm sshd Running. sshd needs to be up
@@ -436,14 +442,14 @@ _lab_wait_ssh() {
                 powershell -NoProfile -Command \
                 "(Get-Service sshd -EA SilentlyContinue).Status" \
                 2>/dev/null) || rc=$?
-            if (( rc == 0 )) && [[ "$probe_out" == *Running* ]]; then
+            if ((rc == 0)) && [[ "$probe_out" == *Running* ]]; then
                 ok_count=$((ok_count + 1))
                 consecutive_ok=$((consecutive_ok + 1))
             else
                 fail_count=$((fail_count + 1))
-                if (( rc == 124 )); then
+                if ((rc == 124)); then
                     last_fail="qga probe timed out after ${probe_timeout_s}s"
-                elif (( rc != 0 )); then
+                elif ((rc != 0)); then
                     last_fail="qga rc=${rc}"
                 else
                     last_fail="qga ok but sshd state='$(echo "$probe_out" | tr -d '\n\r' | head -c 80)'"
@@ -459,14 +465,14 @@ _lab_wait_ssh() {
                 python3 "$VM_SETUP/lib/vmrun.py" powershell "$vmx" --timeout 8 \
                 <<<'(Get-Service sshd -EA SilentlyContinue).Status' \
                 2>/dev/null) || rc=$?
-            if (( rc == 0 )) && [[ "$probe_out" == *Running* ]]; then
+            if ((rc == 0)) && [[ "$probe_out" == *Running* ]]; then
                 ok_count=$((ok_count + 1))
                 consecutive_ok=$((consecutive_ok + 1))
             else
                 fail_count=$((fail_count + 1))
-                if (( rc == 124 )); then
+                if ((rc == 124)); then
                     last_fail="vmrun probe timed out after ${probe_timeout_s}s"
-                elif (( rc != 0 )); then
+                elif ((rc != 0)); then
                     last_fail="vmrun rc=${rc}"
                 else
                     last_fail="vmrun ok but sshd state='$(echo "$probe_out" | tr -d '\n\r' | head -c 80)'"
@@ -479,12 +485,12 @@ _lab_wait_ssh() {
                 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
                 -o ConnectTimeout=3 -o LogLevel=ERROR \
                 "$VM_USER@$ip" 'echo ok' >/dev/null 2>&1 || rc=$?
-            if (( rc == 0 )); then
+            if ((rc == 0)); then
                 ok_count=$((ok_count + 1))
                 consecutive_ok=$((consecutive_ok + 1))
             else
                 fail_count=$((fail_count + 1))
-                if (( rc == 124 )); then
+                if ((rc == 124)); then
                     last_fail="ssh probe timed out after ${probe_timeout_s}s (sshd worker wedged)"
                 else
                     last_fail="ssh rc=${rc}"
@@ -493,12 +499,12 @@ _lab_wait_ssh() {
             fi
         fi
 
-        if (( consecutive_ok >= stable_ok_required )); then
+        if ((consecutive_ok >= stable_ok_required)); then
             ok "$label ready via $transport at $ip (${ok_count} OK / ${fail_count} fail over ${elapsed}s)"
             return 0
         fi
 
-        if (( elapsed >= next_diag )); then
+        if ((elapsed >= next_diag)); then
             _lab_wait_diag "$ip" "$label" "$elapsed" "$ok_count" "$fail_count" "$last_fail" "$transport"
             next_diag=$((next_diag + diag_every_s))
         fi
@@ -521,7 +527,7 @@ _lab_wait_diag() {
     local role domain domstate ping_ms port22
     role="$([[ "$ip" == "$TARGET_IP" ]] && echo target || echo debugger)"
     case "$role" in
-        target)   domain="$TARGET_NAME" ;;
+        target) domain="$TARGET_NAME" ;;
         debugger) domain="$DEBUGGER_NAME" ;;
     esac
     domstate="$(vm_state "$role" 2>/dev/null || echo '?')"
@@ -543,9 +549,10 @@ _lab_wait_diag() {
             agent_state="qga:down"
         fi
     elif [[ "$WINFORGE_BACKEND" == "vmware" ]]; then
-        local vmx; vmx="$(_vmware_vmx_path "$role" 2>/dev/null || true)"
-        if [[ -n "$vmx" && -f "$vmx" ]] \
-           && python3 "$VM_SETUP/lib/vmrun.py" ping "$vmx" 2>/dev/null; then
+        local vmx
+        vmx="$(_vmware_vmx_path "$role" 2>/dev/null || true)"
+        if [[ -n "$vmx" && -f "$vmx" ]] &&
+            python3 "$VM_SETUP/lib/vmrun.py" ping "$vmx" 2>/dev/null; then
             agent_state="vmrun:up"
         else
             agent_state="vmrun:down"
@@ -555,7 +562,8 @@ _lab_wait_diag() {
 }
 
 cmd_lab() {
-    local sub="${1:-spawn}"; shift 2>/dev/null || true
+    local sub="${1:-spawn}"
+    shift 2>/dev/null || true
     # --gui / --nogui flags (consumed by spawn/start/reset; ignored elsewhere).
     # Default: gui for vmware (the user likely picked it *to* see the console);
     # nogui for kvm (headless is the libvirt/virt-manager convention).
@@ -565,28 +573,31 @@ cmd_lab() {
     local -a rest=()
     for arg in "$@"; do
         case "$arg" in
-            --gui)   LAB_SPAWN_GUI=1 ;;
+            --gui) LAB_SPAWN_GUI=1 ;;
             --nogui) LAB_SPAWN_GUI=0 ;;
-            *)       rest+=("$arg") ;;
+            *) rest+=("$arg") ;;
         esac
     done
     if ((${#rest[@]})); then set -- "${rest[@]}"; else set --; fi
     case "$sub" in
-        spawn)     _lab_spawn ;;
-        start)     _lab_start ;;
-        stop)      _lab_stop ;;
-        reset)     _lab_destroy; _lab_spawn ;;
-        destroy)   _lab_destroy ;;
-        status)    _lab_status ;;
-        wait-kd)   _lab_wait_kd ;;
-        load-mcp)  _lab_load_mcp ;;
+        spawn) _lab_spawn ;;
+        start) _lab_start ;;
+        stop) _lab_stop ;;
+        reset)
+            _lab_destroy
+            _lab_spawn
+            ;;
+        destroy) _lab_destroy ;;
+        status) _lab_status ;;
+        wait-kd) _lab_wait_kd ;;
+        load-mcp) _lab_load_mcp ;;
         console)
             local role="${1:-}"
-            [[ "$role" == "target" || "$role" == "debugger" ]] \
-                || die "lab console <target|debugger>"
+            [[ "$role" == "target" || "$role" == "debugger" ]] ||
+                die "lab console <target|debugger>"
             vm_console_open "$role" || die "Could not open console for $role"
             ;;
-        *)         die "lab: unknown subcommand '$sub' (try: spawn [--gui|--nogui]|start [--gui|--nogui]|stop|reset [--gui|--nogui]|destroy|status|wait-kd|load-mcp|console <target|debugger>)" ;;
+        *) die "lab: unknown subcommand '$sub' (try: spawn [--gui|--nogui]|start [--gui|--nogui]|stop|reset [--gui|--nogui]|destroy|status|wait-kd|load-mcp|console <target|debugger>)" ;;
     esac
 }
 
@@ -599,9 +610,9 @@ _lab_kd_connected() {
 
 _lab_wait_kd() {
     log "Checking lab state ($WINFORGE_BACKEND)"
-    vm_exists target   || die "$TARGET_NAME not defined. Run: ./setup.sh lab spawn"
+    vm_exists target || die "$TARGET_NAME not defined. Run: ./setup.sh lab spawn"
     vm_exists debugger || die "$DEBUGGER_NAME not defined"
-    [[ "$(vm_state target)"   == "running" ]] || die "Target not running"
+    [[ "$(vm_state target)" == "running" ]] || die "Target not running"
     [[ "$(vm_state debugger)" == "running" ]] || die "Debugger not running"
 
     log "Waiting for debugger SSH..."
@@ -622,7 +633,10 @@ _lab_wait_kd() {
 
     log "Waiting for KDNET connection in kd_wrapper.log (up to 180s)..."
     for _ in $(seq 1 60); do
-        _lab_kd_connected && { ok "KDNET connected"; return 0; }
+        _lab_kd_connected && {
+            ok "KDNET connected"
+            return 0
+        }
         sleep 3
     done
 
@@ -659,9 +673,9 @@ _lab_load_mcp() {
     # Requires: lab pair running, kd connected, target SSH up.
 
     log "Checking lab state ($WINFORGE_BACKEND)"
-    vm_exists target   || die "$TARGET_NAME not defined. Run: ./setup.sh lab spawn"
+    vm_exists target || die "$TARGET_NAME not defined. Run: ./setup.sh lab spawn"
     vm_exists debugger || die "$DEBUGGER_NAME not defined"
-    [[ "$(vm_state target)"   == "running" ]] || die "Target not running"
+    [[ "$(vm_state target)" == "running" ]] || die "Target not running"
     [[ "$(vm_state debugger)" == "running" ]] || die "Debugger not running"
 
     _lab_wait_kd
@@ -680,7 +694,10 @@ _lab_load_mcp() {
     for _ in $(seq 1 24); do
         timeout 10 sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             -o ConnectTimeout=3 -o LogLevel=ERROR "$VM_USER@$TARGET_IP" 'echo ok' \
-            >/dev/null 2>&1 && { ssh_up=true; break; }
+            >/dev/null 2>&1 && {
+            ssh_up=true
+            break
+        }
         sleep 5
     done
     $ssh_up || die "Target SSH not up — wait for full boot first"
@@ -690,8 +707,8 @@ _lab_load_mcp() {
     log "Triggering kernel debug break via NtSystemDebugControl on target..."
     sshpass -p "$VM_PASS" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
         -o LogLevel=ERROR "$ROOT/vm-setup/kd_break.ps1" \
-        "$VM_USER@$TARGET_IP:C:/winforge/kd_break.ps1" >/dev/null 2>&1 \
-        || die "Failed to SCP kd_break.ps1 to target"
+        "$VM_USER@$TARGET_IP:C:/winforge/kd_break.ps1" >/dev/null 2>&1 ||
+        die "Failed to SCP kd_break.ps1 to target"
     local break_result
     break_result=$(sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
@@ -719,7 +736,10 @@ _lab_load_mcp() {
     log "Waiting for MCP HTTP endpoint (up to 180s)..."
     local mcp_up=false
     for _ in $(seq 1 60); do
-        _lab_mcp_http_live && { mcp_up=true; break; }
+        _lab_mcp_http_live && {
+            mcp_up=true
+            break
+        }
         sleep 3
     done
 
@@ -738,14 +758,14 @@ _lab_spawn() {
     local gui_mode="nogui"
     if [[ "${LAB_SPAWN_GUI:-}" == "1" ]]; then gui_mode="gui"; fi
 
-    backend_preflight  || die "Backend preflight failed ($WINFORGE_BACKEND)"
+    backend_preflight || die "Backend preflight failed ($WINFORGE_BACKEND)"
     backend_ensure_network
     preflight_lab_mac_collisions
     ensure_ssh_key
     [[ -f "$IMAGES_DIR/${VM_NAME}-gold.qcow2" ]] || die "No gold image. Run './setup.sh install' first."
 
     log "Provisioning $TARGET_NAME (backend=$WINFORGE_BACKEND, ip=$TARGET_IP)"
-    vm_provision target   8192
+    vm_provision target 8192
     log "Provisioning $DEBUGGER_NAME (backend=$WINFORGE_BACKEND, ip=$DEBUGGER_IP)"
     vm_provision debugger 4096
 
@@ -767,8 +787,8 @@ _lab_spawn() {
     # (qga on KVM, vmrun on VMware) instead of SSH (no wedge risk).
     # Exactly one is set per backend; the other stays empty so the
     # transport detector falls cleanly to the matching path.
-    WINFORGE_QGA_DOMAIN="$([[ "$WINFORGE_BACKEND" == "kvm"    ]] && echo "$TARGET_NAME")" \
-    WINFORGE_VMRUN_VMX="$( [[ "$WINFORGE_BACKEND" == "vmware" ]] && _vmware_vmx_path target)" \
+    WINFORGE_QGA_DOMAIN="$([[ "$WINFORGE_BACKEND" == "kvm" ]] && echo "$TARGET_NAME")" \
+    WINFORGE_VMRUN_VMX="$([[ "$WINFORGE_BACKEND" == "vmware" ]] && _vmware_vmx_path target)" \
         "$VM_SETUP/role-bootstrap-target.sh" "$TARGET_IP" "$SSH_KEY" "$DEBUGGER_IP"
 
     log "Starting debugger ($gui_mode)"
@@ -776,8 +796,8 @@ _lab_spawn() {
     _lab_wait_ssh "$DEBUGGER_IP" "debugger"
 
     log "Configuring debugger role (kd.exe KDNET, MCP HTTP)"
-    WINFORGE_QGA_DOMAIN="$([[ "$WINFORGE_BACKEND" == "kvm"    ]] && echo "$DEBUGGER_NAME")" \
-    WINFORGE_VMRUN_VMX="$( [[ "$WINFORGE_BACKEND" == "vmware" ]] && _vmware_vmx_path debugger)" \
+    WINFORGE_QGA_DOMAIN="$([[ "$WINFORGE_BACKEND" == "kvm" ]] && echo "$DEBUGGER_NAME")" \
+    WINFORGE_VMRUN_VMX="$([[ "$WINFORGE_BACKEND" == "vmware" ]] && _vmware_vmx_path debugger)" \
         "$VM_SETUP/role-bootstrap-debugger.sh" "$DEBUGGER_IP" "$SSH_KEY"
 
     ok "Lab VMs up. Immediate MCP endpoints are live; :8100 comes up after first break (lab load-mcp)."
@@ -794,9 +814,9 @@ _lab_spawn() {
 # _lab_status (which previously printed two divergent tables with different
 # caveats).
 _lab_mcp_table() {
-    printf '  MCP (target):   http://%s:8300/mcp/ mcp-windbg (user-mode debug, LIVE after spawn)\n'  "$TARGET_IP"
-    printf '  MCP (target):   http://%s:8200/mcp  DesktopCommander\n'                                "$TARGET_IP"
-    printf '  MCP (debugger): http://%s:8201/mcp  DesktopCommander\n'                                "$DEBUGGER_IP"
+    printf '  MCP (target):   http://%s:8300/mcp/ mcp-windbg (user-mode debug, LIVE after spawn)\n' "$TARGET_IP"
+    printf '  MCP (target):   http://%s:8200/mcp  DesktopCommander\n' "$TARGET_IP"
+    printf '  MCP (debugger): http://%s:8201/mcp  DesktopCommander\n' "$DEBUGGER_IP"
     printf '  MCP (debugger): http://%s:8100/mcp  WinDbg kernel (live after first crash or load-mcp)\n' "$DEBUGGER_IP"
 }
 
@@ -828,7 +848,10 @@ _lab_start() {
 
 _lab_shutdown_role() {
     local role="$1" ip="$2" label="$3" grace="$4"
-    vm_exists "$role" || { warn "$label VM not defined"; return 0; }
+    vm_exists "$role" || {
+        warn "$label VM not defined"
+        return 0
+    }
     if [[ "$(vm_state "$role")" != "running" ]]; then
         ok "$label already stopped"
         return 0
@@ -837,12 +860,15 @@ _lab_shutdown_role() {
     log "Asking $label Windows guest to shut down"
     timeout 15 sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
         -o ConnectTimeout=5 -o LogLevel=ERROR "$VM_USER@$ip" \
-        'shutdown /s /t 0 /f' >/dev/null 2>&1 \
-        || warn "$label guest shutdown command failed; will force off if it remains running"
+        'shutdown /s /t 0 /f' >/dev/null 2>&1 ||
+        warn "$label guest shutdown command failed; will force off if it remains running"
 
     local waited=0
-    while (( waited < grace )); do
-        [[ "$(vm_state "$role")" != "running" ]] && { ok "$label stopped"; return 0; }
+    while ((waited < grace)); do
+        [[ "$(vm_state "$role")" != "running" ]] && {
+            ok "$label stopped"
+            return 0
+        }
         sleep 5
         waited=$((waited + 5))
     done
@@ -872,7 +898,7 @@ _lab_destroy() {
 _lab_status() {
     printf '\n  Backend: %s\n' "$WINFORGE_BACKEND"
     printf '  Lab VMs:\n'
-    printf '    %-28s %-15s %s\n' "$TARGET_NAME"   "$TARGET_IP"   "$(vm_state target   2>/dev/null || echo 'not defined')"
+    printf '    %-28s %-15s %s\n' "$TARGET_NAME" "$TARGET_IP" "$(vm_state target 2>/dev/null || echo 'not defined')"
     printf '    %-28s %-15s %s\n' "$DEBUGGER_NAME" "$DEBUGGER_IP" "$(vm_state debugger 2>/dev/null || echo 'not defined')"
     _lab_mcp_table
     printf '  KDNET:          target port 50000, key 1.2.3.4 (kd auto-connects on target boot)\n\n'
@@ -883,9 +909,9 @@ _lab_status() {
 cmd="${1:-install}"
 shift 2>/dev/null || true
 case "$cmd" in
-    install|status|reset|start|stop|destroy) "cmd_$cmd" ;;
+    install | status | reset | start | stop | destroy) "cmd_$cmd" ;;
     lab) cmd_lab "$@" ;;
-    -h|--help|help)
+    -h | --help | help)
         # Stop at `set -[E]euo pipefail` — tolerant of an eventual -Eeuo sweep
         # that the audit flagged as missing.
         sed -n '2,/^set -.*euo/p' "$0" | sed 's/^# \?//' | head -n -2

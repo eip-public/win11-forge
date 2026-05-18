@@ -23,7 +23,8 @@
 # Detect the subnet from the live interface so we work even if the user has
 # customized vmnet8 to a different subnet.
 _vmware_detect_vmnet8_subnet() {
-    local cidr; cidr="$(ip -br -4 addr show vmnet8 2>/dev/null | awk '{print $3}' | head -1)"
+    local cidr
+    cidr="$(ip -br -4 addr show vmnet8 2>/dev/null | awk '{print $3}' | head -1)"
     [[ -z "$cidr" ]] && return 1
     # cidr looks like "172.16.87.1/24" -> echo "172.16.87"
     echo "${cidr%.*/*}"
@@ -54,33 +55,49 @@ backend_name() { echo "vmware"; }
 
 _vmware_role_to_name() {
     case "$1" in
-        target)   echo "$TARGET_NAME" ;;
+        target) echo "$TARGET_NAME" ;;
         debugger) echo "$DEBUGGER_NAME" ;;
-        *)        echo "backend/vmware.sh: unknown role '$1'" >&2; return 1 ;;
+        *)
+            echo "backend/vmware.sh: unknown role '$1'" >&2
+            return 1
+            ;;
     esac
 }
 
 _vmware_role_to_mac() {
     case "$1" in
-        target)   echo "$TARGET_MAC" ;;
+        target) echo "$TARGET_MAC" ;;
         debugger) echo "$DEBUGGER_MAC" ;;
     esac
 }
 
 _vmware_vmx_path() {
-    local name; name="$(_vmware_role_to_name "$1")" || return 1
+    local name
+    name="$(_vmware_role_to_name "$1")" || return 1
     echo "$VMWARE_DIR/$name/$name.vmx"
 }
 
 # ── Preflight ─────────────────────────────────────────────────────
 
 backend_preflight() {
-    command -v vmrun >/dev/null    || { echo "vmrun missing. Install VMware Workstation." >&2; return 1; }
-    command -v qemu-img >/dev/null || { echo "qemu-img missing. apt install qemu-utils" >&2; return 1; }
-    [[ -x "$VM_SETUP/qcow2-to-vmware.sh" ]] \
-        || { echo "$VM_SETUP/qcow2-to-vmware.sh missing or not executable" >&2; return 1; }
-    ip -br addr show vmnet8 >/dev/null 2>&1 \
-        || { echo "vmnet8 interface not present. Is VMware Workstation set up? sudo vmware-networks --start" >&2; return 1; }
+    command -v vmrun >/dev/null || {
+        echo "vmrun missing. Install VMware Workstation." >&2
+        return 1
+    }
+    command -v qemu-img >/dev/null || {
+        echo "qemu-img missing. apt install qemu-utils" >&2
+        return 1
+    }
+    [[ -x "$VM_SETUP/qcow2-to-vmware.sh" ]] ||
+        {
+            echo "$VM_SETUP/qcow2-to-vmware.sh missing or not executable" >&2
+            return 1
+        }
+    ip -br addr show vmnet8 >/dev/null 2>&1 ||
+        {
+            echo "vmnet8 interface not present. Is VMware Workstation set up? sudo vmware-networks --start" >&2
+            return 1
+        }
 
     # Re-detect vmnet8 subnet now that we've confirmed the interface is up.
     # The source-time detection at the top of this file may have hit the
@@ -102,9 +119,12 @@ backend_preflight() {
 # install-deps.sh (vmware subcommand) — not on every spawn.
 backend_ensure_network() {
     local conf=/etc/vmware/vmnet8/dhcpd/dhcpd.conf
-    [[ -r "$conf" ]] || { echo "$conf unreadable — VMware dhcpd config missing?" >&2; return 1; }
+    [[ -r "$conf" ]] || {
+        echo "$conf unreadable — VMware dhcpd config missing?" >&2
+        return 1
+    }
     local missing=()
-    grep -qF "$TARGET_MAC"   "$conf" 2>/dev/null || missing+=("target ($TARGET_MAC -> $TARGET_IP)")
+    grep -qF "$TARGET_MAC" "$conf" 2>/dev/null || missing+=("target ($TARGET_MAC -> $TARGET_IP)")
     grep -qF "$DEBUGGER_MAC" "$conf" 2>/dev/null || missing+=("debugger ($DEBUGGER_MAC -> $DEBUGGER_IP)")
     if [[ ${#missing[@]} -gt 0 ]]; then
         echo "[!] vmnet8 dhcpd reservations missing: ${missing[*]}" >&2
@@ -149,12 +169,15 @@ EOF
 #      or (worse) produces clones booting pre-rebuild state. The snapshot
 #      is recreated by _vmware_ensure_gold_snapshot on the next provision.
 _vmware_ensure_gold_vmdk() {
-    [[ -f "$GOLD_QCOW2" ]] || { echo "Gold qcow2 missing: $GOLD_QCOW2" >&2; return 1; }
+    [[ -f "$GOLD_QCOW2" ]] || {
+        echo "Gold qcow2 missing: $GOLD_QCOW2" >&2
+        return 1
+    }
     if [[ -f "$GOLD_VMDK" ]]; then
         local q v
         q=$(stat -c %Y "$GOLD_QCOW2")
         v=$(stat -c %Y "$GOLD_VMDK")
-        if (( v >= q )); then
+        if ((v >= q)); then
             return 0
         fi
         echo "[*] gold.vmdk is older than gold.qcow2 — regenerating"
@@ -168,10 +191,10 @@ _vmware_ensure_gold_vmdk() {
         return 1
     fi
 
-    if [[ -f "$GOLD_VMX" ]] \
-       && vmrun -T ws listSnapshots "$GOLD_VMX" 2>/dev/null | grep -qx "$BASE_SNAPSHOT"; then
+    if [[ -f "$GOLD_VMX" ]] &&
+        vmrun -T ws listSnapshots "$GOLD_VMX" 2>/dev/null | grep -qx "$BASE_SNAPSHOT"; then
         echo "[*] Removing stale '$BASE_SNAPSHOT' snapshot before vmdk regen"
-        vmrun -T ws deleteSnapshot "$GOLD_VMX" "$BASE_SNAPSHOT" >/dev/null 2>&1 || \
+        vmrun -T ws deleteSnapshot "$GOLD_VMX" "$BASE_SNAPSHOT" >/dev/null 2>&1 ||
             echo "[!] deleteSnapshot failed — stale snapshot delta may linger in gold dir" >&2
     fi
 
@@ -236,13 +259,15 @@ _vmware_install_tools_in_gold() {
     echo "[*] First-time gold prep: installing VMware Tools (~10 min, runs once per host)"
 
     # Stage setup.exe host-side.
-    local mnt; mnt="$(mktemp -d)"
+    local mnt
+    mnt="$(mktemp -d)"
     if ! sudo -n mount -o loop,ro "$iso" "$mnt" 2>/dev/null; then
         echo "[-] could not mount $iso (needs passwordless sudo); skipping VMware Tools" >&2
         rmdir "$mnt"
         return 0
     fi
-    local stage; stage="$(mktemp -d)"
+    local stage
+    stage="$(mktemp -d)"
     cp "$mnt/setup.exe" "$stage/setup.exe"
     sudo -n umount "$mnt"
     rmdir "$mnt"
@@ -260,7 +285,7 @@ _vmware_install_tools_in_gold() {
     local leases=/etc/vmware/vmnet8/dhcpd/dhcpd.leases
     echo "[*] Waiting for gold DHCP lease + sshd (up to 30 min, first VMware boot is slow)"
     local elapsed=0 max_wait=1800 gold_mac="" gold_ip=""
-    while (( elapsed < max_wait )); do
+    while ((elapsed < max_wait)); do
         sleep 15
         elapsed=$((elapsed + 15))
         # MAC: vmrun writes ethernet0.generatedAddress into the .vmx on first start.
@@ -280,7 +305,7 @@ _vmware_install_tools_in_gold() {
             echo "[+] gold reachable at $gold_ip (MAC $gold_mac) after ${elapsed}s"
             break
         fi
-        if (( elapsed % 60 == 0 )); then
+        if ((elapsed % 60 == 0)); then
             echo "  t+${elapsed}s: mac=${gold_mac:-?} ip=${gold_ip:-?} port22=closed"
         fi
     done
@@ -293,7 +318,7 @@ _vmware_install_tools_in_gold() {
     fi
 
     # SCP installer + phase script.
-    local ssh_key="$IMAGES_DIR/../vm-ssh-key"  # parent of vm-images
+    local ssh_key="$IMAGES_DIR/../vm-ssh-key" # parent of vm-images
     local sshopts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR)
     echo "[*] Staging setup.exe + install_vmware_tools.ps1 on gold"
     ssh "${sshopts[@]}" -i "$ssh_key" "forge@$gold_ip" \
@@ -331,9 +356,13 @@ _vmware_install_tools_in_gold() {
     echo "[*] Shutting down gold gracefully"
     ssh "${sshopts[@]}" -i "$ssh_key" "forge@$gold_ip" 'shutdown /s /t 0 /f' >/dev/null 2>&1 || true
     local off_elapsed=0
-    while (( off_elapsed < 120 )); do
-        sleep 5; off_elapsed=$((off_elapsed + 5))
-        vmrun -T ws list 2>/dev/null | grep -qxF "$GOLD_VMX" || { echo "[+] gold shut down"; break; }
+    while ((off_elapsed < 120)); do
+        sleep 5
+        off_elapsed=$((off_elapsed + 5))
+        vmrun -T ws list 2>/dev/null | grep -qxF "$GOLD_VMX" || {
+            echo "[+] gold shut down"
+            break
+        }
     done
     # Force-stop if still up.
     if vmrun -T ws list 2>/dev/null | grep -qxF "$GOLD_VMX"; then
@@ -348,7 +377,7 @@ _vmware_patch_clone() {
     # Strip any pre-existing ethernet0.* and memSize/displayName lines
     sed -i -E '/^ethernet0\.(generatedAddress|generatedAddressOffset|address|addressType)\s*=/d' "$vmx"
     sed -i -E '/^(memSize|displayName)\s*=/d' "$vmx"
-    cat >> "$vmx" <<EOF
+    cat >>"$vmx" <<EOF
 
 # winforge: pinned for predictable IP via vmnet8 dhcpd reservation
 ethernet0.addressType = "static"
@@ -362,10 +391,14 @@ EOF
 
 vm_provision() {
     local role="$1" ram="$2"
-    local name; name="$(_vmware_role_to_name "$role")" || return 1
-    local mac;  mac="$(_vmware_role_to_mac "$role")"
-    local vmx;  vmx="$(_vmware_vmx_path "$role")"
-    local dir;  dir="$VMWARE_DIR/$name"
+    local name
+    name="$(_vmware_role_to_name "$role")" || return 1
+    local mac
+    mac="$(_vmware_role_to_mac "$role")"
+    local vmx
+    vmx="$(_vmware_vmx_path "$role")"
+    local dir
+    dir="$VMWARE_DIR/$name"
 
     _vmware_ensure_gold_vmdk
     _vmware_ensure_gold_snapshot
@@ -386,7 +419,8 @@ vm_provision() {
 
 vm_start() {
     local role="$1" mode="${2:-nogui}"
-    local vmx; vmx="$(_vmware_vmx_path "$role")" || return 1
+    local vmx
+    vmx="$(_vmware_vmx_path "$role")" || return 1
     [[ "$mode" == "gui" ]] || mode="nogui"
     if [[ "$mode" == "gui" ]]; then
         _vmware_require_gui || return 1
@@ -396,16 +430,20 @@ vm_start() {
 
 vm_force_stop() {
     local role="$1"
-    local vmx; vmx="$(_vmware_vmx_path "$role")" || return 1
+    local vmx
+    vmx="$(_vmware_vmx_path "$role")" || return 1
     [[ -f "$vmx" ]] || return 0
     vmrun -T ws stop "$vmx" hard >/dev/null 2>&1 || true
 }
 
 vm_undefine() {
     local role="$1"
-    local name; name="$(_vmware_role_to_name "$role")" || return 1
-    local vmx;  vmx="$(_vmware_vmx_path "$role")"
-    local dir;  dir="$VMWARE_DIR/$name"
+    local name
+    name="$(_vmware_role_to_name "$role")" || return 1
+    local vmx
+    vmx="$(_vmware_vmx_path "$role")"
+    local dir
+    dir="$VMWARE_DIR/$name"
     if [[ -f "$vmx" ]]; then
         vmrun -T ws stop "$vmx" hard >/dev/null 2>&1 || true
         vmrun -T ws deleteVM "$vmx" >/dev/null 2>&1 || true
@@ -415,8 +453,12 @@ vm_undefine() {
 
 vm_state() {
     local role="$1"
-    local vmx; vmx="$(_vmware_vmx_path "$role")" || return 1
-    if [[ ! -f "$vmx" ]]; then echo "undefined"; return; fi
+    local vmx
+    vmx="$(_vmware_vmx_path "$role")" || return 1
+    if [[ ! -f "$vmx" ]]; then
+        echo "undefined"
+        return
+    fi
     if vmrun -T ws list 2>/dev/null | grep -qxF "$vmx"; then
         echo "running"
     else
@@ -426,14 +468,19 @@ vm_state() {
 
 vm_exists() {
     local role="$1"
-    local vmx; vmx="$(_vmware_vmx_path "$role")" || return 1
+    local vmx
+    vmx="$(_vmware_vmx_path "$role")" || return 1
     [[ -f "$vmx" ]]
 }
 
 vm_console_open() {
     local role="$1"
-    local vmx; vmx="$(_vmware_vmx_path "$role")" || return 1
-    [[ -f "$vmx" ]] || { echo "$role not provisioned" >&2; return 1; }
+    local vmx
+    vmx="$(_vmware_vmx_path "$role")" || return 1
+    [[ -f "$vmx" ]] || {
+        echo "$role not provisioned" >&2
+        return 1
+    }
     # `vmware <vmx>` opens (or focuses) the VM tab in Workstation.
     vmware "$vmx" >/dev/null 2>&1 &
 }
