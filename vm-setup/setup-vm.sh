@@ -538,6 +538,14 @@ else
   fi
 fi
 
+# VMware Tools is installed by backend/vmware.sh::_vmware_install_tools_in_gold
+# during the VMware-side first-time gold preparation — NOT here. The
+# official VMware Tools setup.exe has a hardcoded VMCheckRequirements()
+# guard that bails with MSI exit 1602 ("Not inside a VM") on KVM/QEMU.
+# Trying to install it during the KVM-based gold build is fundamentally
+# not possible. Confirmed empirically 2026-05-18 (see install_qga.ps1
+# which IS the parallel KVM-side guest agent install).
+
 # ── Verify installation ───────────────────────────────────────────
 
 echo ""
