@@ -9,7 +9,8 @@ name: lint
 #   - ruff format --check on Python helpers (same scope)
 #   - mypy          on Python helpers (same scope as ruff)
 #   - vulture       on Python helpers (dead-code detection; same scope)
-# Config lives in .shellcheckrc and pyproject.toml at repo root.
+#   - jscpd         on bash/python/powershell (copy-paste detection; ratchet)
+# Config lives in .shellcheckrc, pyproject.toml, and .jscpd.json at repo root.
 
 on:
   push:
@@ -185,3 +186,31 @@ jobs:
         # [tool.vulture] in pyproject.toml. Vulture exits non-zero on
         # any finding above min_confidence; CI fails accordingly.
         run: vulture
+
+  jscpd:
+    name: jscpd
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install jscpd
+        # jscpd is the canonical polyglot copy-paste detector — handles
+        # bash, python, and powershell (the three languages in this repo)
+        # from a single config. Pin the exact tested patch version so a
+        # future 4.x release with a tokenizer change can't fail CI on a
+        # green branch — `jscpd@4` would float to the latest 4.x. Bump
+        # in lockstep with CONTRIBUTING.md / CLAUDE.md.
+        run: npm install --no-save --no-audit --no-fund 'jscpd@4.2.3'
+
+      - name: jscpd
+        # Scope (pattern, ignore), min-lines, min-tokens, and the
+        # duplication-percentage threshold all live in .jscpd.json at
+        # the repo root. The threshold is set above the current baseline
+        # so CI passes today and ratchets down as known duplicates are
+        # extracted into vm-setup/lib/. jscpd exits non-zero when total
+        # duplication exceeds the threshold; CI fails accordingly.
+        run: npx jscpd .

@@ -284,6 +284,15 @@ break the next stage's inputs.
 #                        pyproject.toml. Complements ruff's F (pyflakes)
 #                        rules by catching unused methods/functions
 #                        that pyflakes treats as potential external API.
+#   - jscpd 4.2.3        Polyglot copy-paste detection (bash, python,
+#                        powershell — the three languages in this repo).
+#                        Config: .jscpd.json at repo root. minLines /
+#                        minTokens skip incidental structural echoes;
+#                        `threshold` is the ratchet — set above today's
+#                        baseline so CI passes, and lowered as known
+#                        duplicates are extracted into vm-setup/lib/.
+#                        Patch version is pinned in lockstep across
+#                        .github/workflows/lint.yml and CONTRIBUTING.md.
 # Use the portable -print0 | xargs -0 form so this works in bash 3.2
 # (macOS default) and zsh too — no `mapfile`.
 SH_FILES_FIND=( -name '*.sh'
@@ -298,6 +307,7 @@ ruff check
 ruff format --check
 mypy        # static type check; install with: pip install 'mypy==1.20.*'
 vulture     # dead-code detection; install with: pip install 'vulture==2.14'
+npx jscpd@4.2.3 .  # copy-paste detection; no install needed beyond npx
 
 bats tests/bootstrap-readiness.bats         # gold-image readiness
 bats tests/kvm-backend.bats                 # KVM lab lifecycle

@@ -1,0 +1,23 @@
+{
+  "pattern": "**/*.{sh,py,ps1}",
+  "ignore": [
+    "vm-setup/third-party/**",
+    "lab/**",
+    "node_modules/**",
+    "**/__pycache__/**",
+    ".git/**",
+    ".venv/**",
+    "venv/**",
+    "env/**",
+    "**/site-packages/**"
+  ],
+  "minLines": 10,
+  "minTokens": 70,
+  "threshold": 1.0,
+  "reporters": ["console"],
+  "format": ["bash", "python", "powershell"],
+  "ignoreCase": false,
+  "absolute": false,
+  "noSymlinks": true,
+  "gitignore": false
+}

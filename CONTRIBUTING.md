@@ -244,9 +244,20 @@ mypy
 #   python3 -m venv .venv && .venv/bin/pip install 'vulture==2.14'
 #   .venv/bin/vulture
 vulture
+
+# Copy-paste detection. Polyglot — covers bash/python/powershell from a
+# single config (.jscpd.json at repo root). minLines/minTokens are tuned
+# to skip incidental structural echoes (CLI dispatch blocks etc.); the
+# `threshold` percentage is the ratchet — set above the current baseline
+# today, lowered as duplicates are extracted into vm-setup/lib/. Pin the
+# exact tested patch version (matches .github/workflows/lint.yml); the
+# floating-major form (`jscpd@4`) can pick up tokenizer changes between
+# patches. Run locally with no global install via npx:
+#   npx jscpd@4.2.3 .
+npx jscpd@4.2.3 .
 ```
 
-All seven checks must pass cleanly on the project's in-scope files.
+All eight checks must pass cleanly on the project's in-scope files.
 The `vm-setup/third-party/` tree (vendored upstream) and `lab/`
 (per-CVE scratch code) are excluded by configuration.
 
