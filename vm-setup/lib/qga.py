@@ -33,6 +33,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from typing import Any, cast
 
 
 class QGAError(RuntimeError):
@@ -61,7 +62,7 @@ class QGA:
 
     # ── primitive: send a single QMP-shaped JSON command ──────────
 
-    def _run(self, payload: dict, *, virsh_timeout: int = 5) -> dict:
+    def _run(self, payload: dict[str, Any], *, virsh_timeout: int = 5) -> dict[str, Any]:
         """Execute one guest-agent command. Returns the decoded JSON body
         (the {"return": ...} envelope from virsh). Raises QGAError if the
         channel isn't there or the command is blacklisted."""
@@ -76,7 +77,7 @@ class QGA:
             stderr = (proc.stderr or "").strip()
             raise QGAError(stderr or f"virsh exited {proc.returncode}")
         try:
-            return json.loads(proc.stdout)
+            return cast(dict[str, Any], json.loads(proc.stdout))
         except json.JSONDecodeError as e:
             raise QGAError(f"non-JSON virsh stdout: {proc.stdout[:200]}") from e
 
@@ -106,7 +107,7 @@ class QGA:
         poll for completion. Prefer exec_wait() for synchronous needs."""
         if not argv:
             raise ValueError("argv must be non-empty")
-        args = {
+        args: dict[str, Any] = {
             "path": argv[0],
             "arg": argv[1:],
             "capture-output": capture,
@@ -120,13 +121,16 @@ class QGA:
         rv = self._run({"execute": "guest-exec", "arguments": args})
         return int(rv["return"]["pid"])
 
-    def exec_status(self, pid: int) -> dict:
+    def exec_status(self, pid: int) -> dict[str, Any]:
         """Raw guest-exec-status return body. Keys present once exited:
         exited (bool), exitcode (int), signal (int), out-data (base64),
         err-data (base64), out-truncated (bool), err-truncated (bool)."""
-        return self._run(
-            {"execute": "guest-exec-status", "arguments": {"pid": pid}}
-        )["return"]
+        return cast(
+            dict[str, Any],
+            self._run(
+                {"execute": "guest-exec-status", "arguments": {"pid": pid}}
+            )["return"],
+        )
 
     def exec_wait(
         self,

@@ -117,7 +117,9 @@ def main() -> int:
             def _decode(stream: object) -> str:
                 if isinstance(stream, bytes):
                     return stream.decode("utf-8", "replace")
-                return stream or ""
+                if isinstance(stream, str):
+                    return stream
+                return ""
 
             return {
                 "exit_code": -1,

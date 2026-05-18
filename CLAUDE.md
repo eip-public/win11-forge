@@ -268,13 +268,17 @@ break the next stage's inputs.
 #                        call sites.
 #   - pyproject.toml     [tool.ruff] target-version, rule selection,
 #                        per-file ignores; excludes vm-setup/third-party
-#                        and lab/.
+#                        and lab/. [tool.mypy] sets python_version
+#                        3.10, files=[vm-setup], strict-ish warnings,
+#                        and ignore_missing_imports for the Windows-
+#                        only fastmcp / mcp_server packages.
 # Use the portable -print0 | xargs -0 form so this works in bash 3.2
 # (macOS default) and zsh too — no `mapfile`.
 find . -name '*.sh' \
     -not -path './vm-setup/third-party/*' -not -path './lab/*' \
     -print0 | xargs -0 shellcheck -x -S warning
 ruff check
+mypy        # static type check; install with: pip install 'mypy==1.20.*'
 
 bats tests/bootstrap-readiness.bats         # gold-image readiness
 bats tests/kvm-backend.bats                 # KVM lab lifecycle

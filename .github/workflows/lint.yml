@@ -2,7 +2,8 @@ name: lint
 
 # Runs the repo-level linters on every push and pull request.
 #   - shellcheck on bash scripts (install-deps.sh, setup.sh, vm-setup/**/*.sh)
-#   - ruff on Python helpers   (vm-setup/*.py, vm-setup/lib/*.py)
+#   - ruff       on Python helpers (vm-setup/*.py, vm-setup/lib/*.py)
+#   - mypy       on Python helpers (same scope as ruff; [tool.mypy] in pyproject.toml)
 # Config lives in .shellcheckrc and pyproject.toml at repo root.
 
 on:
@@ -57,3 +58,26 @@ jobs:
         # Config (target-version, line-length, rule selection, per-file
         # ignores) lives in pyproject.toml at the repo root.
         run: ruff check
+
+  mypy:
+    name: mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          # Match [tool.mypy] python_version in pyproject.toml. The gold
+          # image's bundled Python is the floor we need to support; CI
+          # type-checks against that floor so we don't ship a syntax or
+          # typing construct the guest can't parse.
+          python-version: "3.10"
+
+      - name: Install mypy
+        run: pip install --no-cache-dir 'mypy==1.20.*'
+
+      - name: mypy
+        # Scope (files, exclude), python_version, and the strict-ish flag
+        # set all live under [tool.mypy] in pyproject.toml.
+        run: mypy

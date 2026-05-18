@@ -67,3 +67,47 @@ ignore = [
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+# ── Static type checking ──────────────────────────────────────────
+# Scope mirrors [tool.ruff] above: the host/guest helper scripts
+# under `vm-setup/`. Run locally with:
+#   /path/to/venv/bin/mypy vm-setup
+# Also runs in CI on every push and PR (.github/workflows/lint.yml).
+[tool.mypy]
+python_version = "3.10"
+files = ["vm-setup"]
+exclude = '(^|/)(vm-setup/third-party/|vm-setup/setup-vm-phases/|__pycache__/)'
+
+# Strict-ish defaults: catch the high-value bugs (any/missing
+# return/unused ignores) without forcing fully-typed every-argument
+# style on helper scripts that are mostly CLI glue and subprocess
+# orchestration. Bump these together (e.g. add disallow_untyped_defs)
+# as the Python surface grows.
+warn_return_any = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+check_untyped_defs = true
+no_implicit_optional = true
+strict_equality = true
+extra_checks = true
+
+# Third-party packages used by the guest-side MCP shims aren't
+# installed in CI (fastmcp pulls in a large transitive tree and is
+# only ever imported inside the Windows gold image). Silence the
+# import-not-found error for the few external modules — the surface
+# we care about is our own code.
+[[tool.mypy.overrides]]
+module = [
+    # `fastmcp`, `config`, `core.*`, `tools` live inside the cloned
+    # NadavLor/windbg-ext-mcp checkout staged under C:\winforge\ on the
+    # gold image (see vm-setup/windbg_mcp_http.py:HERE / mcp_server).
+    # They are not pip-installable, so CI can't see them.
+    "fastmcp",
+    "fastmcp.*",
+    "config",
+    "core.*",
+    "tools",
+    "tools.*",
+]
+ignore_missing_imports = true
