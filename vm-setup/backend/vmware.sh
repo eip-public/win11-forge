@@ -178,14 +178,168 @@ _vmware_ensure_gold_vmdk() {
     "$VM_SETUP/qcow2-to-vmware.sh" "${VM_NAME}-gold" "$GOLD_QCOW2" 4096 4 >&2
 }
 
-# Take the base snapshot used as the linked-clone source. Idempotent.
+# Ensure the gold is ready for linked clones: has VMware Tools installed
+# (so vmrun runProgramInGuest works in clones) AND has the base snapshot
+# the clones branch off of. Idempotent.
+#
+# Order matters: the tools-install marker is the source of truth. If the
+# marker is missing we always (re)install — dropping any pre-existing
+# snapshot first, since that snapshot pre-dates the tools install and
+# would propagate a Tools-less gold to every clone forever.
 _vmware_ensure_gold_snapshot() {
-    local snaps; snaps="$(vmrun -T ws listSnapshots "$GOLD_VMX" 2>/dev/null)"
-    if echo "$snaps" | grep -qx "$BASE_SNAPSHOT"; then
+    local marker="$VMWARE_DIR/${VM_NAME}-gold/.tools-installed"
+    if [[ ! -f "$marker" ]]; then
+        if vmrun -T ws listSnapshots "$GOLD_VMX" 2>/dev/null | grep -qx "$BASE_SNAPSHOT"; then
+            echo "[*] Dropping stale '$BASE_SNAPSHOT' snapshot (pre-VMware-Tools)"
+            vmrun -T ws deleteSnapshot "$GOLD_VMX" "$BASE_SNAPSHOT" >/dev/null 2>&1 || true
+        fi
+        _vmware_install_tools_in_gold
+    fi
+    if ! vmrun -T ws listSnapshots "$GOLD_VMX" 2>/dev/null | grep -qx "$BASE_SNAPSHOT"; then
+        echo "[*] Taking gold snapshot '$BASE_SNAPSHOT'"
+        vmrun -T ws snapshot "$GOLD_VMX" "$BASE_SNAPSHOT" >/dev/null
+    fi
+}
+
+# Install VMware Tools into the gold image, one-time.
+#
+# Flow:
+#   - Skip if gold already marked tools-installed (marker file).
+#   - Stage setup.exe from /usr/lib/vmware/isoimages/windows.iso (skip
+#     install if missing; the operator can rerun later).
+#   - Boot gold.vmx (NAT, auto-MAC).
+#   - Discover the booted gold's IP via the host arp table keyed on
+#     the vmx's generated MAC (sshd in the gold from KVM gold-build
+#     works under VMware too).
+#   - Wait for SSH stable.
+#   - SCP setup.exe + install_vmware_tools.ps1 to the gold.
+#   - Run install via SSH + powershell -EncodedCommand (the same
+#     encoding-safe primitive guest.sh uses).
+#   - Verify VMTools service is present and Automatic.
+#   - Graceful shutdown via SSH.
+#   - Touch marker so subsequent _vmware_ensure_gold_snapshot calls
+#     don't redo this (~10 min).
+_vmware_install_tools_in_gold() {
+    local marker="$VMWARE_DIR/${VM_NAME}-gold/.tools-installed"
+    if [[ -f "$marker" ]]; then
+        echo "[=] VMware Tools already installed in gold (marker: $marker)"
         return 0
     fi
-    echo "[*] Taking gold snapshot '$BASE_SNAPSHOT' (one-time)"
-    vmrun -T ws snapshot "$GOLD_VMX" "$BASE_SNAPSHOT" >/dev/null
+
+    local iso=/usr/lib/vmware/isoimages/windows.iso
+    if [[ ! -f "$iso" ]]; then
+        echo "[!] $iso not present — skipping VMware Tools install in gold"
+        echo "    (vmrun runProgramInGuest will not work; lab spawn falls back to SSH)"
+        return 0
+    fi
+
+    echo "[*] First-time gold prep: installing VMware Tools (~10 min, runs once per host)"
+
+    # Stage setup.exe host-side.
+    local mnt; mnt="$(mktemp -d)"
+    if ! sudo -n mount -o loop,ro "$iso" "$mnt" 2>/dev/null; then
+        echo "[-] could not mount $iso (needs passwordless sudo); skipping VMware Tools" >&2
+        rmdir "$mnt"
+        return 0
+    fi
+    local stage; stage="$(mktemp -d)"
+    cp "$mnt/setup.exe" "$stage/setup.exe"
+    sudo -n umount "$mnt"
+    rmdir "$mnt"
+
+    # Boot the gold.
+    echo "[*] Booting gold under VMware (nogui)"
+    vmrun -T ws start "$GOLD_VMX" nogui >/dev/null
+
+    # Wait for boot + DHCP + sshd. First boot of a KVM-built image on
+    # VMware can take 15+ min (Windows reconfigures drivers for the new
+    # hypervisor, sshd starts late). Discover the IP via vmnet8's
+    # dhcpd.leases file rather than `arp` — arp only populates after
+    # the host initiates traffic, but the lease shows up the moment the
+    # guest's DHCP handshake completes.
+    local leases=/etc/vmware/vmnet8/dhcpd/dhcpd.leases
+    echo "[*] Waiting for gold DHCP lease + sshd (up to 30 min, first VMware boot is slow)"
+    local elapsed=0 max_wait=1800 gold_mac="" gold_ip=""
+    while (( elapsed < max_wait )); do
+        sleep 15
+        elapsed=$((elapsed + 15))
+        # MAC: vmrun writes ethernet0.generatedAddress into the .vmx on first start.
+        if [[ -z "$gold_mac" ]]; then
+            gold_mac=$(awk -F'"' '/^ethernet0\.(generatedAddress|address)[[:space:]]/{print tolower($2); exit}' "$GOLD_VMX")
+        fi
+        if [[ -n "$gold_mac" && -z "$gold_ip" ]]; then
+            # awk over leases: track current lease's IP, when we see the
+            # matching MAC, emit. Keep the last (most recent) match.
+            gold_ip=$(sudo -n awk -v mac="$gold_mac" '
+                /^lease /{ip=$2}
+                /hardware ethernet/{m=tolower($3); gsub(/;/,"",m); if (m==mac) hit=ip}
+                END{print hit}
+            ' "$leases" 2>/dev/null)
+        fi
+        if [[ -n "$gold_ip" ]] && timeout 5 bash -c "</dev/tcp/$gold_ip/22" 2>/dev/null; then
+            echo "[+] gold reachable at $gold_ip (MAC $gold_mac) after ${elapsed}s"
+            break
+        fi
+        if (( elapsed % 60 == 0 )); then
+            echo "  t+${elapsed}s: mac=${gold_mac:-?} ip=${gold_ip:-?} port22=closed"
+        fi
+    done
+    if [[ -z "$gold_ip" ]] || ! timeout 5 bash -c "</dev/tcp/$gold_ip/22" 2>/dev/null; then
+        echo "[-] gold never reached SSH on a valid IP within ${max_wait}s" >&2
+        echo "    last seen: mac=$gold_mac ip=$gold_ip" >&2
+        vmrun -T ws stop "$GOLD_VMX" hard >/dev/null 2>&1 || true
+        rm -rf "$stage"
+        return 1
+    fi
+
+    # SCP installer + phase script.
+    local ssh_key="$IMAGES_DIR/../vm-ssh-key"  # parent of vm-images
+    local sshopts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR)
+    echo "[*] Staging setup.exe + install_vmware_tools.ps1 on gold"
+    ssh "${sshopts[@]}" -i "$ssh_key" "forge@$gold_ip" \
+        'powershell -NoProfile -Command "New-Item -ItemType Directory -Path C:\winforge\vmware-tools -Force | Out-Null"' >/dev/null
+    scp "${sshopts[@]}" -i "$ssh_key" "$stage/setup.exe" "forge@$gold_ip:C:/winforge/vmware-tools/setup.exe" >/dev/null
+    scp "${sshopts[@]}" -i "$ssh_key" "$VM_SETUP/setup-vm-phases/install_vmware_tools.ps1" \
+        "forge@$gold_ip:C:/winforge/install_vmware_tools.ps1" >/dev/null
+    rm -rf "$stage"
+
+    # Run the install via SSH. install_vmware_tools.ps1 verifies the
+    # VMTools service registers with Automatic startup before returning,
+    # so its exit code IS the verification — no separate SSH verify
+    # needed (and the previous one hit the bash→ssh→powershell
+    # quoting trap that guest.sh's EncodedCommand path avoids).
+    echo "[*] Running install_vmware_tools.ps1 inside gold (~3-5 min)"
+    local install_cmd='powershell -NoProfile -ExecutionPolicy Bypass -File C:\winforge\install_vmware_tools.ps1'
+    if ! ssh "${sshopts[@]}" -i "$ssh_key" "forge@$gold_ip" "$install_cmd"; then
+        echo "[-] install_vmware_tools.ps1 failed in gold" >&2
+        # Don't hard-stop: leaves the gold up so the operator can inspect
+        # %TEMP%\vminst.log if they need to. Next spawn will start
+        # _vmware_install_tools_in_gold from scratch and the install_qga
+        # idempotency check will skip if Tools is actually fine.
+        return 1
+    fi
+
+    # Touch the marker as soon as the install succeeds, BEFORE the
+    # shutdown attempt. If shutdown hangs or another late step fails,
+    # the marker still truthfully reflects "Tools is installed", so the
+    # next spawn skips the install (which install_vmware_tools.ps1's own
+    # idempotency would also catch, but defence-in-depth).
+    touch "$marker"
+    echo "[+] VMware Tools installed; marker $marker"
+
+    # Graceful shutdown.
+    echo "[*] Shutting down gold gracefully"
+    ssh "${sshopts[@]}" -i "$ssh_key" "forge@$gold_ip" 'shutdown /s /t 0 /f' >/dev/null 2>&1 || true
+    local off_elapsed=0
+    while (( off_elapsed < 120 )); do
+        sleep 5; off_elapsed=$((off_elapsed + 5))
+        vmrun -T ws list 2>/dev/null | grep -qxF "$GOLD_VMX" || { echo "[+] gold shut down"; break; }
+    done
+    # Force-stop if still up.
+    if vmrun -T ws list 2>/dev/null | grep -qxF "$GOLD_VMX"; then
+        echo "[!] gold did not shut down gracefully; forcing"
+        vmrun -T ws stop "$GOLD_VMX" hard >/dev/null 2>&1 || true
+    fi
 }
 
 # Patch a freshly-cloned .vmx: pin MAC, memSize, displayName.
