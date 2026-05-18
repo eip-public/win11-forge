@@ -134,10 +134,15 @@
                language="neutral" versionScope="nonSxS"
                xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
       <RunSynchronous>
-        <!-- Disable Windows Defender real-time protection -->
+        <!-- Disable Windows Defender service before it ever starts.
+             Tamper Protection silently no-ops Set-MpPreference once MsMpEng
+             is running, so the historical `Set-MpPreference -DisableRealtimeMonitoring`
+             pass here was wishful. Setting WinDefend's Start type to 4 via
+             registry, *before* the service first loads, is TP-immune
+             because TP only engages after Defender boots. -->
         <RunSynchronousCommand wcm:action="add">
           <Order>1</Order>
-          <Path>powershell -Command "Set-MpPreference -DisableRealtimeMonitoring $true" </Path>
+          <Path>reg add "HKLM\SYSTEM\CurrentControlSet\Services\WinDefend" /v Start /t REG_DWORD /d 4 /f</Path>
         </RunSynchronousCommand>
         <!-- Suppress the network discovery/location popup -->
         <RunSynchronousCommand wcm:action="add">

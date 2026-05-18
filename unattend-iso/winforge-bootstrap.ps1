@@ -87,10 +87,21 @@ function Ensure-Baseline {
     reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v EnableLUA /t REG_DWORD /d 0 /f | Out-Null
     reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v EnableFirstLogonAnimation /t REG_DWORD /d 0 /f | Out-Null
     reg add "HKLM\SYSTEM\CurrentControlSet\Control\Network\NewNetworkWindowOff" /f | Out-Null
-    Set-MpPreference -DisableRealtimeMonitoring 1 -ErrorAction SilentlyContinue
-    Set-MpPreference -DisableBehaviorMonitoring 1 -ErrorAction SilentlyContinue
+    # Defender disable: belt to the specialize-pass reg write that set
+    # WinDefend Start=4 before the service first loaded. If we got here and
+    # MsMpEng is running, the specialize write didn't stick and
+    # Tamper Protection has engaged -- Set-MpPreference is a silent no-op
+    # in that state. Re-disable the service start type defensively, then
+    # ASSERT live state. The assertion is the only way to catch a silent TP
+    # bypass; previous code logged success even when Defender stayed on.
+    reg add "HKLM\SYSTEM\CurrentControlSet\Services\WinDefend" /v Start /t REG_DWORD /d 4 /f | Out-Null
     Set-Service -Name wuauserv -StartupType Disabled -ErrorAction SilentlyContinue
     Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
+
+    $mp = Get-MpComputerStatus -ErrorAction SilentlyContinue
+    if ($mp -and $mp.RealTimeProtectionEnabled) {
+        throw "Defender RealTimeProtectionEnabled is True at end of Ensure-Baseline. The gold-level disable (autounattend.xml specialize pass + WinDefend Start=4) did not take effect. The gold image will silently quarantine PoC binaries. Investigate before sealing."
+    }
 }
 
 function Ensure-Dhcp {

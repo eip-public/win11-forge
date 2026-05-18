@@ -121,6 +121,24 @@ KDNET_KEY="${KDNET_KEY:-1.2.3.4}"
 echo "[*] Configuring KDNET on target $VM_IP (debugger=$KDNET_HOST:$KDNET_PORT key=$KDNET_KEY)"
 guest_powershell "bcdedit /debug on; bcdedit /dbgsettings net hostip:$KDNET_HOST port:$KDNET_PORT key:$KDNET_KEY; bcdedit /set testsigning on"
 
+# Defender belt-and-suspenders: the gold-image unattend's `Set-MpPreference
+# -DisableRealtimeMonitoring` is silently a no-op under Tamper Protection on
+# Win11 IoT Enterprise LTSC (TP swallows the cmdlet). Real-time, behavior,
+# and IOAV protection stay on despite the bootstrap. Until the gold is
+# rebuilt with a TP-immune disable path (WinDefend Start=4 in specialize
+# pass), add path + process exclusions per-spawn: TP allows admin exclusion
+# adds even when it blocks the full disable. Lab dirs C:\winforge and
+# C:\temp cover the PoC build/run surface.
+echo "[*] Adding Defender exclusions for lab dirs (TP-tolerant bypass)"
+guest_powershell 'foreach ($p in "C:\winforge","C:\temp") { Add-MpPreference -ExclusionPath $p -ErrorAction SilentlyContinue }
+$s = Get-MpComputerStatus -ErrorAction SilentlyContinue
+$excl = (Get-MpPreference).ExclusionPath -join ", "
+if ($s -and $s.RealTimeProtectionEnabled) {
+    Write-Host "[!] Defender RealTimeProtectionEnabled is still True - gold disable was silently a no-op (likely TP). Relying on path exclusions: $excl"
+} else {
+    Write-Host "[+] Defender RTP off (or unreachable); exclusions: $excl"
+}'
+
 # Auto-reboot on BSOD: the supervisor loop restarts kd.exe after each crash,
 # and auto-reboot means the target recovers without manual virsh intervention.
 echo "[*] Enabling auto-reboot on BSOD + kernel mini-dump"
