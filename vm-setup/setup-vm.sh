@@ -404,6 +404,7 @@ else { Write-Host "[-] cl.exe not found" }
 # have the bits. Only the debugger role actually runs the MCP server at boot;
 # that's arranged by role-bootstrap-debugger.sh, not here.
 
+scp_to "$SCRIPT_DIR/patches/windbg-ext-mcp-surface-errors.patch" "C:/winforge/patches/windbg-ext-mcp-surface-errors.patch" >&2
 run_phase "windbg_mcp" "Cloning + building NadavLor windbg-ext-mcp" '$dll = Get-ChildItem -Path '\''C:\winforge\windbg-ext-mcp'\'' -Recurse -Filter '\''windbgmcpExt.dll'\'' -EA SilentlyContinue | Select-Object -First 1; & '\''C:\Python314\python.exe'\'' -c '\''import fastmcp, win32pipe'\'' 2>$null; if ($dll -and $LASTEXITCODE -eq 0) { Write-Output OK }' '
 $env:Path = "C:\Program Files\Git\cmd;C:\Python314;C:\Python314\Scripts;C:\ProgramData\chocolatey\bin;$env:Path"
 $repo = "C:\winforge\windbg-ext-mcp"
@@ -411,6 +412,23 @@ $repo = "C:\winforge\windbg-ext-mcp"
 if (-not (Test-Path $repo)) {
     git clone https://github.com/NadavLor/windbg-ext-mcp.git $repo *>$null
     if ($LASTEXITCODE -ne 0) { throw "git clone failed ($LASTEXITCODE)" }
+}
+
+# Apply win11-forge patches against upstream (the upstream wraps real kd errors
+# as "Unknown error workflow" which blinds agents; the patch surfaces the
+# actual error text). Idempotent: git apply --check first to skip if already
+# applied (e.g. on re-runs).
+$patch = "C:\winforge\patches\windbg-ext-mcp-surface-errors.patch"
+if (Test-Path $patch) {
+    Set-Location $repo
+    & git apply --check $patch *>$null
+    if ($LASTEXITCODE -eq 0) {
+        & git apply $patch
+        if ($LASTEXITCODE -ne 0) { throw "git apply failed ($LASTEXITCODE) on $patch" }
+        Write-Host "[+] applied patch: $(Split-Path -Leaf $patch)"
+    } else {
+        Write-Host "[*] patch already applied (or does not apply): $(Split-Path -Leaf $patch)"
+    }
 }
 
 # Build the extension DLL

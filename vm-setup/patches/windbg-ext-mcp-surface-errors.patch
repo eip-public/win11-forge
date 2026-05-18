@@ -1,0 +1,39 @@
+--- a/mcp_server/core/error_handler.py
++++ b/mcp_server/core/error_handler.py
+@@ -421,9 +421,32 @@
+             kwargs.get("command", ""),
+             kwargs.get("timeout_ms", 30000)
+         )
++    elif error_type == "execution":
++        # win11-forge patch: previously fell through to the catch-all `else`
++        # below which returned message="Unknown error" because execution_tools.py
++        # passes the real kd HRESULT/text as `original_error`, not `message`.
++        # Surface it instead so agents can diagnose failures.
++        parts = []
++        if kwargs.get("command"):
++            parts.append(f"command={kwargs['command']!r}")
++        if kwargs.get("original_error"):
++            parts.append(str(kwargs["original_error"]).strip())
++        msg = " | ".join(parts) if parts else "Command execution failed"
++        return EnhancedError(
++            category=ErrorCategory.WORKFLOW,
++            message=msg,
++            debug_context=error_enhancer.current_context
++        )
+     else:
++        # win11-forge patch: surface any informative kwarg, not just `message`.
++        parts = []
++        for key in ("message", "original_error", "error"):
++            v = kwargs.get(key)
++            if v:
++                parts.append(str(v).strip())
++        msg = " | ".join(parts) if parts else f"Unknown error (type={error_type!r})"
+         return EnhancedError(
+             category=ErrorCategory.WORKFLOW,
+-            message=kwargs.get("message", "Unknown error"),
++            message=msg,
+             debug_context=error_enhancer.current_context
+-        ) 
+\ No newline at end of file
++        )
+\ No newline at end of file
