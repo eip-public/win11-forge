@@ -20,11 +20,13 @@ Fully self-contained — no external repo dependencies.
 ```
 Linux host (KVM + libvirt, default)         (or VMware Workstation — see "Runtime backend" below)
 │
-├── gold.qcow2  (build once with ./setup.sh install, ~2-3 hours)
+├── gold.qcow2  (build once with ./setup.sh install, ~30-40 min)
 │     Windows 11 24H2 + Python + Git + VS Build Tools + WinDbg SDK
 │     + Node.js LTS + DesktopCommanderMCP
 │     + NadavLor windbgmcpExt.dll + kd_wrapper.py + run_http.py
 │     + mcp-windbg (our svnscha fork, vm-setup/third-party/mcp-windbg)
+│     + QEMU guest agent (KVM control plane) and VMware Tools (added
+│       per-host on first VMware spawn, see vmware.sh)
 │
 ├── winforge-target   (overlay off gold, 192.168.122.100)
 │     bcdedit: KDNET debug → debugger:50000, testsigning on, auto-reboot on BSOD
@@ -47,6 +49,16 @@ Linux host (KVM + libvirt, default)         (or VMware Workstation — see "Runt
 
 **Transport:** KDNET over UDP (port 50000) — not serial. Reconnects
 automatically on every target reboot. No timing dependency.
+
+**Guest control plane (orchestration):** the lab orchestrator
+(`setup.sh lab spawn` and friends) drives the guest via the
+hypervisor's private guest-agent channel — **`qga` on KVM** (`virsh
+qemu-agent-command`), **`vmrun` on VMware** (VMware Tools' VIX RPC).
+Both are non-network, non-authenticated transport-level channels that
+sidestep the Windows OpenSSH worker's stdout-wedge failure mode.
+SSH remains as a fallback for legacy golds and for bulk file
+transfer (qga/vmrun's `guest-file-*` / `copyFile*` are too slow for
+multi-MB blobs). See `vm-setup/lib/guest.sh` for the dispatcher.
 
 **MCP endpoints (four):**
 - `http://192.168.122.100:8300/mcp/` — **mcp-windbg** (CDB-backed) — **user-mode** debug: attach by PID/name, bp, go, step, read memory/registers/stack. Path ends with `/`. **Primary debugger for user-mode service CVEs.** Up immediately after `lab spawn`.
@@ -127,17 +139,29 @@ curl -L -o vm-images/virtio-win.iso \
     'https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso'
 ```
 
-### 4. Build the gold image (once, ~2-3 hours)
+### 4. Build the gold image (once, ~30-40 min)
 
 ```bash
 ./setup.sh install
 ```
 
-Installs Windows unattended, then runs `setup-vm.sh` (Python, Git, VS Build
-Tools, WinDbg SDK, Node.js, DesktopCommanderMCP, windbg-ext-mcp clone + DLL
-build, vendored mcp-windbg pip-install, fastmcp), plus the hardening pass
-that disables firewall / UAC / Defender and locks Windows Update so the
-target build stays fixed across reboots. Seals to a flat gold qcow2.
+Repacks the source ISO with Microsoft's `cdboot_noprompt.efi` /
+`efisys_noprompt.bin` boot blobs (so the install boots without a
+keystroke), installs Windows unattended, then runs `setup-vm.sh`
+(Python, Git, VS Build Tools, WinDbg SDK, Node.js, DesktopCommanderMCP,
+windbg-ext-mcp clone + DLL build, vendored mcp-windbg pip-install,
+fastmcp, **QEMU guest agent** for the KVM control plane), plus the
+hardening pass that disables firewall / UAC / Defender and locks
+Windows Update so the target build stays fixed across reboots. Seals
+to a flat gold qcow2 and stashes the gold's NVRAM alongside.
+
+(Under `WINFORGE_BACKEND=vmware`, the first lab spawn additionally
+installs **VMware Tools** into the VMware-side gold before the base
+snapshot is taken — VMware Tools refuses to install on a KVM gold-
+build VM, so this can't be baked into `setup-vm.sh`. Adds ~10 min
+to the first VMware spawn on a given host; zero per-spawn overhead
+after.)
+
 Subsequent lab spawns take minutes, not hours.
 
 > **Alternate gold source:** `vm-setup/create-vm.sh` also accepts a
@@ -277,10 +301,14 @@ win11-forge/
 │   ├── windbg_mcp_http.py    # HTTP transport shim for :8100 (deployed as run_http.py)
 │   ├── kd_break.ps1          # NtSystemDebugControl(6) — used by lab load-mcp
 │   ├── target_mcp_http.py    # FastMCP proxy: DesktopCommanderMCP stdio → HTTP :8200/:8201
+│   │                         # + native run_powershell_script tool (no quoting tax)
 │   ├── setup-desktop-commander.ps1  # writes DesktopCommander config for SYSTEM profile
+│   ├── disable-dc-onboarding.ps1    # silences DC's pendingWelcomeOnboarding prompt-injection
 │   ├── role-bootstrap-target.sh    # bcdedit KDNET + TargetDesktopBoot task
 │   ├── role-bootstrap-debugger.sh  # uploads kd_wrapper+run_http, DebuggerBoot
 │   ├── qcow2-to-vmware.sh    # gold.qcow2 → gold.vmdk for the VMware backend
+│   ├── repack-iso-noprompt.sh  # rewrites Win11 install ISO to skip the
+│   │                           # "Press any key to boot from CD" prompt
 │   ├── fetch-isos.sh         # standalone: stage Win11 LTSC + virtio-win ISOs
 │   ├── fetch-windev-vhd.sh   # standalone: download Microsoft's Win11 dev .vhdx
 │   ├── lib/                  # shared helpers sourced by sibling scripts
@@ -290,9 +318,15 @@ win11-forge/
 │   │   ├── ssh-helpers.sh    # shared SSH option array
 │   │   ├── virsh-helpers.sh  # virsh_or_warn wrapper
 │   │   ├── dc-helpers.sh     # DesktopCommander MCP config helpers
-│   │   └── set-disk-source.py# libvirt XML disk-source rewrite
+│   │   ├── set-disk-source.py# libvirt XML disk-source rewrite
+│   │   ├── guest.sh          # transport-agnostic guest_powershell/guest_cmd
+│   │   │                     # dispatch: qga (KVM) > vmrun (VMware) > ssh fallback
+│   │   ├── qga.py            # host wrapper around virsh qemu-agent-command
+│   │   └── vmrun.py          # host wrapper around vmrun runProgramInGuest
 │   ├── setup-vm-phases/      # gold-build PowerShell phases launched detached via
-│   │                         # launch.ps1 + runner.ps1 (avoids Windows OpenSSH stdout wedge)
+│   │   │                     # launch.ps1 + runner.ps1 (avoids Windows OpenSSH stdout wedge)
+│   │   ├── install_qga.ps1   # installs vioserial driver + QEMU-GA in KVM gold
+│   │   └── install_vmware_tools.ps1  # invoked from backend/vmware.sh (VMware-side gold prep)
 │   ├── backend/              # KVM- vs VMware-backend dispatch helpers (kvm.sh, vmware.sh)
 │   └── third-party/
 │       └── mcp-windbg/       # vendored svnscha/mcp-windbg fork (user-mode :8300)
@@ -303,7 +337,8 @@ win11-forge/
 │   ├── install-winforge-bootstrap.ps1
 │   └── winforge-bootstrap.ps1
 ├── vm-images/                # ISOs + generated qcow2s + NVRAM (gitignored)
-│   ├── win11-ltsc-24h2.iso
+│   ├── win11-ltsc-24h2.iso              # source ISO (user-provided)
+│   ├── win11-ltsc-24h2-noprompt.iso     # repack with cdboot_noprompt.efi (auto-generated)
 │   ├── virtio-win.iso
 │   ├── winforge-win11-24h2-gold.qcow2
 │   ├── winforge-win11-24h2-gold-OVMF_VARS.fd  # populated NVRAM stash (seal-vm-gold.sh)
