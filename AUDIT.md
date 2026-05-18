@@ -540,7 +540,7 @@ System.Net.WebClient).DownloadString(...))` for chocolatey
 
 ## Status tracker
 
-Last updated: 2026-05-17.
+Last updated: 2026-05-18.
 
 Legend:
 - **fixed** — landed in commit; lab-validated.
@@ -616,3 +616,55 @@ Legend:
 - setup-vm.sh:250 choco-reboot registry check silently broken — **fixed** in edaff16 (\\" escape doesn't work in outer-PS-as-shell context)
 - New standalone helpers fetch-windev-vhd.sh + fetch-isos.sh — **added** in 0abff60
 - Docs trees refreshed + VHD/VHDX path noted — **fixed** in 708ec80
+
+### Post-audit architectural improvements (2026-05-17 / 2026-05-18)
+
+Substantial changes since the audit body was written. These aren't
+audit findings — they're new capabilities — but readers of the tracker
+should see the codebase's trajectory.
+
+**Guest control plane: SSH → qga (KVM) / vmrun (VMware) primary**
+
+- `setup.sh::_lab_wait_ssh` — stability-required wait (3 OK in a row),
+  15s probe timeout, 30 min budget, periodic ping/port-22/agent-state
+  diagnostic — **landed** in 198e715
+- `vm-setup/lib/qga.py` + `setup.sh::_lab_wait_ssh` qga-primary —
+  **landed** in 25fdc9b
+- `vm-setup/lib/guest.sh` + `role-bootstrap-*.sh` qga-primary for short
+  commands — **landed** in fb7db02 (+ d2c8a96 fix)
+- Gold integration: vioserial + QEMU-GA installed in KVM gold —
+  **landed** in e7fb978
+- VMware analog: `vm-setup/lib/vmrun.py` + `setup.sh` vmrun-aware —
+  **landed** in c8dace3
+- `guest.sh` vmrun dispatch + accurate transport reporting — **landed**
+  in 3ca7bcc
+- VMware Tools installed during VMware-side first-time gold prep
+  (Tools refuses to install on KVM gold-build via setup-vm.sh's
+  `VMCheckRequirements()` exit 1602) — **landed** in ec36f01
+- SSH-fallback `guest_powershell` uses -EncodedCommand to survive
+  shell-quoting-chain mangling — **landed** in 83a8cb1
+
+**Gold-build robustness**
+
+- ISO repacked with `cdboot_noprompt.efi` + `efisys_noprompt.bin` so
+  Windows Setup boots without keystroke — **landed** in 28e03c5
+- libvirt default network gets 1.1.1.1+8.8.8.8 DNS forwarders so the
+  guest's chocolatey install actually reaches pypi.org / community.
+  chocolatey.org — **landed** in 4ab0d85
+- Gold NVRAM preserved across seal via `sudo cp` (libvirt-managed
+  NVRAM is mode 600 owned by libvirt-qemu) — **landed** in 7e7ca0b
+  + 6fc2a64
+
+**Agent-ergonomics (DesktopCommander)**
+
+- DC's `pendingWelcomeOnboarding` prompt-injection silenced at
+  bootstrap — **landed** in 95822df
+- `run_powershell_script` native tool on `:8200`/`:8201` collapses the
+  write_file + start_process + read_process_output dance — **landed**
+  in 1e5f4fc
+
+**CVE lab fixes**
+
+- CVE-2026-33101 `poc_rpc.py` corrected: ncacn_ip_tcp transport (was
+  ncacn_np which the gold doesn't expose), correct impacket field
+  name `notUsed` — **landed** in 8750304
