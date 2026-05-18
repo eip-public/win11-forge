@@ -3,7 +3,9 @@ name: lint
 # Runs the repo-level linters/formatters on every push and pull request.
 #   - shellcheck    on bash scripts (install-deps.sh, setup.sh, vm-setup/**/*.sh)
 #   - shfmt --diff  on bash scripts (same scope; -i 4 -ci)
+#   - lizard        on bash scripts (CCN cap; complement to ruff C90 below)
 #   - ruff check    on Python helpers (vm-setup/*.py, vm-setup/lib/*.py)
+#                   includes C90 (mccabe complexity) per [tool.ruff.lint.mccabe]
 #   - ruff format --check on Python helpers (same scope)
 #   - mypy          on Python helpers (same scope as ruff)
 # Config lives in .shellcheckrc and pyproject.toml at repo root.
@@ -97,6 +99,42 @@ jobs:
             -not -path './lab/*' \
             -not -path './.git/*' \
             -print0 | xargs -0 shfmt -i 4 -ci -d
+
+  lizard:
+    name: lizard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lizard
+        # lizard is a multi-language cyclomatic-complexity analyzer.
+        # Python complexity is enforced by ruff's C901 (mccabe) rule
+        # via [tool.ruff.lint.mccabe] in pyproject.toml; lizard
+        # covers bash/shell where ruff has no equivalent.
+        run: pip install --no-cache-dir 'lizard==1.17.*'
+
+      - name: lizard (bash CCN cap)
+        # -C 12 — fail on any function with cyclomatic complexity > 12.
+        #         Matches Python's [tool.ruff.lint.mccabe] max-complexity.
+        # -L 1000 — file-length cap; lab/ and third-party/ are excluded
+        #         by --exclude so legitimate large config files don't
+        #         trip the cap.
+        # The full lizard table is printed for visibility; non-zero
+        # exit on any threshold breach fails CI.
+        run: |
+          lizard \
+            --languages bash \
+            -C 12 \
+            -L 1000 \
+            install-deps.sh setup.sh \
+            vm-setup/*.sh \
+            vm-setup/backend/*.sh \
+            vm-setup/lib/*.sh
 
   mypy:
     name: mypy

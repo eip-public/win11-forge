@@ -35,6 +35,7 @@ import sys
 import threading
 import time
 import types
+from collections.abc import Callable
 from typing import IO
 
 # config
@@ -198,6 +199,104 @@ def _wait_for_kd_connect(proc: subprocess.Popen, cycle: int) -> bool:
     return False
 
 
+def _try_open(path: str) -> IO[str] | None:
+    """Best-effort open of kd's log file. Returns None on OSError so the
+    caller can sleep+retry rather than dying on a transient race with kd's
+    writer."""
+    try:
+        return open(path, encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _read_new_chunk(log_fh: IO[str], log_path: str, last_size: int) -> tuple[str, int] | None:
+    """Read any bytes appended since `last_size`. Returns
+    `(chunk, new_size)` on success (chunk may be empty if nothing grew) or
+    None if the file became unreadable so the caller can sleep+retry.
+    """
+    try:
+        current_size = os.path.getsize(log_path)
+    except OSError:
+        return None
+    if current_size <= last_size:
+        return "", current_size
+    try:
+        log_fh.seek(last_size)
+        chunk = log_fh.read()
+    except OSError:
+        return None
+    return chunk, current_size
+
+
+def _make_send(proc: subprocess.Popen, cycle: int) -> Callable[..., None]:
+    """Build the kd-stdin write helper used by the prompt monitor.
+
+    Kept as a closure so the prompt monitor and its prompt-handler helper
+    can share one logging + error-handling path without threading proc/cycle
+    through every call site.
+    """
+
+    def send(cmd: str, delay: float = 1.5) -> None:
+        if proc.stdin is None:
+            log.warning(f"[cycle {cycle}] proc.stdin is None; skipping '{cmd}'")
+            return
+        try:
+            proc.stdin.write((cmd + "\n").encode())
+            proc.stdin.flush()
+            time.sleep(delay)
+        except Exception as e:
+            log.warning(f"[cycle {cycle}] stdin write failed: {e}")
+
+    return send
+
+
+def _handle_kd_prompt(
+    *,
+    cycle: int,
+    has_mcp: bool,
+    injected: bool,
+    send: Callable[..., None],
+) -> bool:
+    """Handle one kd> prompt detection. Returns the new `injected` state.
+
+    Decision tree:
+      1. pipe already exists       -> extension is loaded; just resume
+                                      (or hold the break if HOLD_FLAG set).
+      2. has_mcp and not injected  -> first break with extension not loaded;
+                                      inject `.load` + `mcpstart`, then
+                                      resume unless held.
+      3. otherwise                 -> no extension available or already
+                                      tried; just resume (unless held).
+    """
+    hold = HOLD_FLAG.exists()
+    if _pipe_exists():
+        if hold:
+            # Agent is doing interactive debug work — do NOT resume.
+            # The agent will clear the flag + issue `g` via MCP when done.
+            log.info(f"[cycle {cycle}] Hold flag present — leaving target at break (pipe)")
+        else:
+            log.info(f"[cycle {cycle}] Extension already loaded (pipe exists) - sending g")
+            send("g")
+        return injected
+
+    if has_mcp and not injected:
+        log.info(f"[cycle {cycle}] Injecting: .load -> mcpstart{'' if hold else ' -> g'}")
+        send(f".load {DLL}", delay=2)
+        send("mcpstart", delay=2)
+        if hold:
+            log.info(f"[cycle {cycle}] Hold flag present — extension loaded, leaving target at break")
+        else:
+            send("g", delay=1)
+        log.info(f"[cycle {cycle}] Commands injected - waiting for pipe")
+        return True
+
+    if hold:
+        log.info(f"[cycle {cycle}] Hold flag present — leaving target at break (fallback)")
+    else:
+        send("g")
+    return injected
+
+
 def _prompt_monitor(proc: subprocess.Popen, cycle: int, pipe_ready_event: threading.Event) -> None:
     """Background thread: watches kd.out.log for 'kd>' and injects extension commands.
 
@@ -218,24 +317,12 @@ def _prompt_monitor(proc: subprocess.Popen, cycle: int, pipe_ready_event: thread
     carryover = ""  # 2-char tail bridges a "kd>" split across read boundaries
     injected = False
 
-    def send(cmd: str, delay: float = 1.5) -> None:
-        if proc.stdin is None:
-            log.warning(f"[cycle {cycle}] proc.stdin is None; skipping '{cmd}'")
-            return
-        try:
-            proc.stdin.write((cmd + "\n").encode())
-            proc.stdin.flush()
-            time.sleep(delay)
-        except Exception as e:
-            log.warning(f"[cycle {cycle}] stdin write failed: {e}")
+    send = _make_send(proc, cycle)
 
     log.info(f"[cycle {cycle}] Prompt monitor started - watching for kd breaks")
 
     log_path = _kd_log_path()
-    try:
-        log_fh = open(log_path, encoding="utf-8", errors="replace")
-    except OSError:
-        log_fh = None
+    log_fh = _try_open(log_path)
 
     # try/finally wrap so log_fh is closed even if an unhandled exception
     # escapes the loop. The body intentionally catches all in-loop failure
@@ -243,65 +330,23 @@ def _prompt_monitor(proc: subprocess.Popen, cycle: int, pipe_ready_event: thread
     try:
         while not _shutdown.is_set() and proc.poll() is None:
             if log_fh is None:
-                try:
-                    log_fh = open(log_path, encoding="utf-8", errors="replace")
-                except OSError:
+                log_fh = _try_open(log_path)
+                if log_fh is None:
                     time.sleep(1)
                     continue
 
-            try:
-                current_size = os.path.getsize(log_path)
-            except OSError:
+            chunk_read = _read_new_chunk(log_fh, log_path, last_log_size)
+            if chunk_read is None:
                 time.sleep(1)
                 continue
+            chunk, last_log_size = chunk_read
 
-            if current_size > last_log_size:
-                try:
-                    log_fh.seek(last_log_size)
-                    chunk = log_fh.read()
-                except OSError:
-                    time.sleep(1)
-                    continue
-
+            if chunk:
                 window = carryover + chunk
                 carryover = window[-2:]
-                last_log_size = current_size
-
                 if "kd>" in window:
                     log.info(f"[cycle {cycle}] kd prompt detected")
-
-                    hold = HOLD_FLAG.exists()
-                    if _pipe_exists():
-                        if hold:
-                            # Agent is doing interactive debug work — do NOT resume.
-                            # The agent will clear the flag + issue `g` via MCP when done.
-                            log.info(f"[cycle {cycle}] Hold flag present — leaving target at break (pipe)")
-                        else:
-                            # Extension already loaded from a prior break - just resume
-                            log.info(f"[cycle {cycle}] Extension already loaded (pipe exists) - sending g")
-                            send("g")
-                    elif has_mcp and not injected:
-                        # First break (or pipe gone) with extension not loaded - (re)inject now
-                        log.info(f"[cycle {cycle}] Injecting: .load -> mcpstart{'' if hold else ' -> g'}")
-                        send(f".load {DLL}", delay=2)
-                        send("mcpstart", delay=2)
-                        if hold:
-                            log.info(
-                                f"[cycle {cycle}] Hold flag present — extension loaded, "
-                                "leaving target at break"
-                            )
-                        else:
-                            send("g", delay=1)
-                        injected = True
-                        log.info(f"[cycle {cycle}] Commands injected - waiting for pipe")
-                    else:
-                        # No MCP or already tried - just resume (unless held)
-                        if hold:
-                            log.info(
-                                f"[cycle {cycle}] Hold flag present — leaving target at break (fallback)"
-                            )
-                        else:
-                            send("g")
+                    injected = _handle_kd_prompt(cycle=cycle, has_mcp=has_mcp, injected=injected, send=send)
 
             # Check if pipe appeared after injection
             if injected and _pipe_exists():
@@ -322,6 +367,63 @@ def _prompt_monitor(proc: subprocess.Popen, cycle: int, pipe_ready_event: thread
 
 
 # supervisor loop
+
+
+def _start_http_if_pipe(cycle: int, label: str) -> None:
+    """Start the HTTP MCP server if the pipe is up and we don't already
+    have a running shim. `label` is logged so the supervisor can distinguish
+    initial vs late-arrival starts.
+    """
+    global _http_proc
+    if _http_proc is not None or not _pipe_exists():
+        return
+    log.info(f"[cycle {cycle}] {label} - starting HTTP MCP server")
+    _http_proc = _start_http()
+    if _http_proc is not None:
+        log.info(f"[cycle {cycle}] HTTP server pid: {_http_proc.pid}")
+        log.info(f"[cycle {cycle}] MCP endpoint: http://0.0.0.0:{HTTP_PORT}/mcp")
+
+
+def _restart_http_if_crashed(cycle: int) -> None:
+    """Restart the HTTP shim if it died while kd is still alive.
+
+    If the pipe disappeared too (extension unloaded), null _http_proc so the
+    next iteration's late-arrival check can pick it up cleanly.
+    """
+    global _http_proc
+    if _http_proc is None or _http_proc.poll() is None:
+        return
+    log.warning(f"[cycle {cycle}] HTTP crashed (code={_http_proc.returncode}) - restarting")
+    time.sleep(HTTP_RESTART_DELAY)
+    if _pipe_exists():
+        _http_proc = _start_http()
+        if _http_proc is not None:
+            log.info(f"[cycle {cycle}] HTTP restarted, pid: {_http_proc.pid}")
+    else:
+        _http_proc = None
+
+
+def _monitor_cycle(cycle: int) -> None:
+    """Inner supervisor loop: watch kd until it exits or shutdown is requested.
+
+    Three responsibilities, each delegated to a helper:
+      1. Late pipe arrival — start HTTP if the extension loaded after the
+         initial PIPE_TIMEOUT_S wait elapsed.
+      2. HTTP crash recovery — restart the shim if it died while kd is alive.
+      3. kd-exit detection — return so the outer loop rotates to a new cycle.
+    """
+    assert _kd_proc is not None
+    log.info(f"[cycle {cycle}] Monitoring kd.exe (stdin held open)...")
+    while not _shutdown.is_set():
+        time.sleep(5)
+        _start_http_if_pipe(cycle, "Pipe appeared late")
+        _restart_http_if_crashed(cycle)
+
+        if _kd_proc.poll() is not None:
+            rc = _kd_proc.returncode
+            log.warning(f"[cycle {cycle}] kd.exe exited (code={rc}/0x{rc & 0xFFFFFFFF:08X})")
+            log.info(f"[cycle {cycle}] Target likely BSODed - restarting for next crash")
+            return
 
 
 def run() -> None:
@@ -369,14 +471,9 @@ def run() -> None:
         pipe_appeared = pipe_ready.wait(timeout=PIPE_TIMEOUT_S)
 
         if pipe_appeared or _pipe_exists():
-            log.info(f"[cycle {cycle}] Pipe ready - starting HTTP MCP server")
             # _http_proc was reset to None at the top of this cycle; the
             # supervisor restarts the HTTP server fresh on every kd cycle.
-            if _http_proc is None:
-                _http_proc = _start_http()
-                if _http_proc is not None:
-                    log.info(f"[cycle {cycle}] HTTP server pid: {_http_proc.pid}")
-                    log.info(f"[cycle {cycle}] MCP endpoint: http://0.0.0.0:{HTTP_PORT}/mcp")
+            _start_http_if_pipe(cycle, "Pipe ready")
         else:
             log.info(f"[cycle {cycle}] No pipe yet - waiting for first break to load extension")
             log.info(
@@ -384,40 +481,7 @@ def run() -> None:
                 "or './setup.sh lab load-mcp' (NtSystemDebugControl)"
             )
 
-        # Monitor until kd exits
-        log.info(f"[cycle {cycle}] Monitoring kd.exe (stdin held open)...")
-        while not _shutdown.is_set():
-            time.sleep(5)
-
-            # Late pipe arrival: if the extension loaded after our initial
-            # PIPE_TIMEOUT_S wait (e.g. user triggered `lab load-mcp` several
-            # minutes after spawn), start HTTP now. Without this check the
-            # pipe_ready_event is set inside the prompt monitor thread but
-            # the supervisor has already moved past pipe_ready.wait(), so
-            # _start_http() would otherwise never be called.
-            if _http_proc is None and _pipe_exists():
-                log.info(f"[cycle {cycle}] Pipe appeared late - starting HTTP MCP server")
-                _http_proc = _start_http()
-                if _http_proc is not None:
-                    log.info(f"[cycle {cycle}] HTTP server pid: {_http_proc.pid}")
-                    log.info(f"[cycle {cycle}] MCP endpoint: http://0.0.0.0:{HTTP_PORT}/mcp")
-
-            # Restart HTTP if it died but kd is still alive
-            if _http_proc is not None and _http_proc.poll() is not None:
-                log.warning(f"[cycle {cycle}] HTTP crashed (code={_http_proc.returncode}) - restarting")
-                time.sleep(HTTP_RESTART_DELAY)
-                if _pipe_exists():
-                    _http_proc = _start_http()
-                    if _http_proc is not None:
-                        log.info(f"[cycle {cycle}] HTTP restarted, pid: {_http_proc.pid}")
-                else:
-                    _http_proc = None
-
-            if _kd_proc.poll() is not None:
-                rc = _kd_proc.returncode
-                log.warning(f"[cycle {cycle}] kd.exe exited (code={rc}/0x{rc & 0xFFFFFFFF:08X})")
-                log.info(f"[cycle {cycle}] Target likely BSODed - restarting for next crash")
-                break
+        _monitor_cycle(cycle)
 
         if _shutdown.is_set():
             break

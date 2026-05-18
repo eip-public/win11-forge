@@ -31,11 +31,12 @@ extend-exclude = [
 #   I    isort import ordering
 #   N    pep8-naming (snake_case funcs/vars, PascalCase classes,
 #        UPPER_SNAKE_CASE constants, etc.)
+#   C90  mccabe cyclomatic complexity (threshold below)
 #   B    flake8-bugbear (likely bugs)
 #   UP   pyupgrade (modern Python idioms)
 #   SIM  flake8-simplify (collapsible conditionals)
 #   RUF  ruff-specific rules
-select = ["E", "W", "F", "I", "N", "B", "UP", "SIM", "RUF"]
+select = ["E", "W", "F", "I", "N", "C90", "B", "UP", "SIM", "RUF"]
 ignore = [
     # We use `except Exception:` deliberately around cleanup paths (kd.exe
     # supervisor, MCP shim) where any exception means "drop this resource
@@ -53,6 +54,18 @@ ignore = [
     # log handle flush). The intent is "best-effort close, never raise".
     "SIM105",
 ]
+
+[tool.ruff.lint.mccabe]
+# Cyclomatic complexity cap. Ruff defaults to 10 (McCabe's classic
+# guidance); we raise to 12 because the codebase has two legitimate
+# supervisor-style loops (`run` in kd_wrapper and `_prompt_monitor`)
+# that branch on multiple independent kernel-debug states and don't
+# reduce cleanly below ~11–12 without sacrificing readability. Any
+# function complexity above this number fails CI (C901). On the
+# radon grading scale this caps us at the top of grade B / start of
+# grade C — well clear of the "becoming hard to maintain" cliff at
+# 15+ (grade D).
+max-complexity = 12
 
 [tool.ruff.lint.per-file-ignores]
 # kd_wrapper.py is a long-lived SYSTEM supervisor that intentionally

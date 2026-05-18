@@ -213,8 +213,16 @@ find . -name '*.sh' \
     -not -path './lab/*' \
     -print0 | xargs -0 shfmt -i 4 -ci -w   # in-place; use -d for diff
 
+# Bash complexity — lizard caps function CCN at 12. Catches new
+# functions that grow unbranched into "complex" territory.
+# Install: pip install 'lizard==1.17.*' (CI uses the same pin).
+lizard --languages bash -C 12 -L 1000 \
+    install-deps.sh setup.sh \
+    vm-setup/*.sh vm-setup/backend/*.sh vm-setup/lib/*.sh
+
 # Python lint — vm-setup/*.py, vm-setup/lib/*.py
 # Rule set, per-file ignores, and target-version live in pyproject.toml.
+# C901 (mccabe) caps function CCN at 12 (see [tool.ruff.lint.mccabe]).
 ruff check
 
 # Python format — same scope and pyproject.toml block
@@ -230,7 +238,7 @@ ruff format --check    # CI-style verify
 mypy
 ```
 
-All five checks must pass cleanly on the project's in-scope files.
+All six checks must pass cleanly on the project's in-scope files.
 The `vm-setup/third-party/` tree (vendored upstream) and `lab/`
 (per-CVE scratch code) are excluded by configuration.
 
