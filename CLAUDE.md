@@ -93,7 +93,12 @@ vm-setup/                       guest-side install + lab-host helpers
                                 from backend/vmware.sh, NOT setup-vm.sh
                                 — see rule 14 for the hypervisor-detect
                                 gotcha).
-  third-party/mcp-windbg/       vendored upstream fork
+  patches/                       host-side patch files applied during the
+                                gold build (git apply --check guard makes
+                                each idempotent). e.g.
+                                windbg-ext-mcp-surface-errors.patch.
+  third-party/mcp-windbg/       vendored upstream fork (patched at build
+                                time via patches/ above)
 
 skills/                         eight-stage pipeline skill set
   patch-intel/      (1)         publicly known intel for the CVE
@@ -133,6 +138,22 @@ them.
    `bcdedit /set testsigning on` and auto-reboot on BSOD. These are
    **not bugs**; they are required for clean PoC execution and KDNET
    reattach after BugCheck. Don't "fix" them.
+
+15. **`Set-MpPreference -DisableRealtimeMonitoring` is a silent no-op
+    under Tamper Protection on Win11 IoT Enterprise LTSC.** TP engages
+    once `MsMpEng` first loads; after that, the cmdlet returns success
+    without changing live state. The real disable path is a registry
+    write — `HKLM\SYSTEM\CurrentControlSet\Services\WinDefend Start=4`
+    — applied in the specialize pass of `autounattend.xml` before TP
+    loads. `disable_security.ps1` and `winforge-bootstrap.ps1` contain
+    a hard assertion (`Get-MpComputerStatus`) that throws if RTP is
+    still on after the attempt; do not soften this to a warning.
+    Per-spawn belt-and-suspenders in `role-bootstrap-target.sh` add
+    `C:\winforge` and `C:\temp` as `ExclusionPath` entries — TP
+    permits admin exclusion adds even when it blocks the full disable.
+    Don't revert to the old `Set-MpPreference` pattern; it silently
+    ships a fully-armed Defender that quarantines PoC binaries at
+    runtime.
 
 3. **`kd_wrapper.py` holds kd's stdin open on purpose.** kd.exe exits
    when its stdin receives EOF. Scheduled tasks close stdin when the
@@ -257,6 +278,21 @@ diffs/<binary>/                  ghidriff working dirs (gzfs/, .log)
 The pipeline reads its predecessor's filename verbatim. Ad-hoc names
 break the next stage's inputs.
 
+## Branch and PR workflow
+
+All changes go through a branch + PR. Never push to `main` directly.
+
+```bash
+git checkout -b <area>/<slug>   # e.g. feat/vmware-backend, fix/kd-wrapper-restart, chore/update-deps
+# make changes
+git add <files>
+git commit -m "Short imperative subject"
+git push -u origin <area>/<slug>
+# open PR for review
+```
+
+Use `feat/` for new capability, `fix/` for bugs, `chore/` for maintenance/docs/cleanup, `scripts/` for one-off ops scripts.
+
 ## Validation before commit
 
 ```bash
@@ -362,8 +398,9 @@ Update it as fixes land.
   don't, because they run inside Windows audit mode where strict mode
   can interact badly with the legacy commands they use. Don't add
   strict mode there without testing the full unattended install.
-- Python: target the version the gold image ships (currently 3.x
-  system Python). No package-manager assumptions inside guest scripts.
+- Python: target Python 3.14 (`C:\Python314\python.exe` on the gold —
+  that is what Chocolatey's `python3` package installs). No
+  package-manager assumptions inside guest scripts.
 - Comment the *why*, not the *what*. The `vm-setup/` and
   `unattend-iso/` files in particular are full of small workarounds
   for specific Windows behaviors — one line per workaround is the
