@@ -1,0 +1,62 @@
+name: Claude Auto Review
+
+# Automatic Claude code review on every pull request. Review-only:
+# `contents: read` + a comment-only tool allow-list, so it CANNOT merge, push,
+# or modify code. Requires repo secret CLAUDE_CODE_OAUTH_TOKEN (`claude
+# setup-token`) and the Claude GitHub App (https://github.com/apps/claude)
+# with access to this repo. Runs on GitHub-hosted runners.
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            This is `win11-forge`: a Python CVE->PoC scaffolding environment for
+            authorized Windows kernel/usermode vulnerability research. It builds
+            a Windows 11 gold image and spawns kernel-debug lab pairs (target +
+            debugger) exposing an MCP endpoint for AI-driven analysis. This is
+            offensive-security research tooling intended for isolated, authorized
+            labs. Adapt your review to what's in the diff.
+
+            Review this pull request, focusing on:
+            - Security posture containment: the labs DELIBERATELY ship with
+              Windows Defender/UAC/Firewall disabled and UNAUTHENTICATED MCP
+              endpoints, and are meant to stay host-only / NAT'd. Flag any change
+              that widens this exposure to routable networks, binds lab/MCP
+              services to 0.0.0.0 or public interfaces, weakens the host-only
+              default, or removes a safety guard — without a clear, documented reason.
+            - Python correctness & safety: command injection / unsafe subprocess
+              in VM and image orchestration; path traversal and unsafe archive
+              extraction; injection into generated configs/scripts; secrets,
+              tokens, or license keys accidentally committed; supply-chain risk
+              in new dependencies.
+            - Correctness: bugs, edge cases, and destructive/irreversible host or
+              VM operations (image builds, disk ops, teardown scripts).
+            - Clarity and maintainability, matching surrounding conventions.
+
+            Note: The PR branch is already checked out in the current working directory.
+
+            Use `gh pr comment` for top-level feedback.
+            Use `mcp__github_inline_comment__create_inline_comment` (with `confirmed: true`) to highlight specific code issues.
+            Only post GitHub comments - don't submit review text as messages.
+
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
