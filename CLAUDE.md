@@ -457,3 +457,7 @@ When updating docs:
 
 If a fact lives in two places, the two will drift. Pick the right
 home and link from the other.
+## Handling the automated Claude PR review
+It's up to you to decide if the nits are worth it — you have the most context. Act on what
+matters (security, correctness, data-loss); use judgment on the rest. Don't blindly apply
+every suggestion, and don't chase round-after-round re-review over cosmetics.
