@@ -13,9 +13,9 @@ LTSC 24H2 gold image once, then spawns short-lived target/debugger VM
 pairs as overlays off the gold for each research session.
 
 It is **not** a hardened image and **not** a public lab. The gold
-image is intentionally permissive (firewall/UAC/Defender off,
-testsigning on, auto-reboot on BSOD) so that CVE PoCs run cleanly
-against a known, debuggable target. The MCP endpoints the lab exposes
+image is intentionally permissive (firewall/UAC off, Defender off or
+restricted by verified lab-path exclusions, testsigning on, auto-reboot on
+BSOD) so that CVE PoCs run cleanly against a known, debuggable target. The MCP endpoints the lab exposes
 do not authenticate; they assume a private lab network. See
 `SECURITY.md`.
 
@@ -133,27 +133,23 @@ them.
 
 2. **The gold image is permissive by design.**
    `unattend-iso/winforge-bootstrap.ps1` and `vm-setup/setup-vm.sh`
-   disable Windows Firewall, set `EnableLUA=0`, disable Defender, and
-   lock Windows Update. `role-bootstrap-target.sh` enables
+   disable Windows Firewall, set `EnableLUA=0`, disable Defender when the
+   installed LTSC build permits it, verify lab-path exclusions otherwise,
+   and lock Windows Update. `role-bootstrap-target.sh` enables
    `bcdedit /set testsigning on` and auto-reboot on BSOD. These are
    **not bugs**; they are required for clean PoC execution and KDNET
    reattach after BugCheck. Don't "fix" them.
 
 15. **`Set-MpPreference -DisableRealtimeMonitoring` is a silent no-op
-    under Tamper Protection on Win11 IoT Enterprise LTSC.** TP engages
-    once `MsMpEng` first loads; after that, the cmdlet returns success
-    without changing live state. The real disable path is a registry
-    write — `HKLM\SYSTEM\CurrentControlSet\Services\WinDefend Start=4`
-    — applied in the specialize pass of `autounattend.xml` before TP
-    loads. `disable_security.ps1` and `winforge-bootstrap.ps1` contain
-    a hard assertion (`Get-MpComputerStatus`) that throws if RTP is
-    still on after the attempt; do not soften this to a warning.
-    Per-spawn belt-and-suspenders in `role-bootstrap-target.sh` add
-    `C:\winforge` and `C:\temp` as `ExclusionPath` entries — TP
-    permits admin exclusion adds even when it blocks the full disable.
-    Don't revert to the old `Set-MpPreference` pattern; it silently
-    ships a fully-armed Defender that quarantines PoC binaries at
-    runtime.
+    under Tamper Protection on Win11 IoT Enterprise LTSC.** Keep the
+    pre-boot `WinDefend Start=4` attempt, but do not reject a usable gold
+    solely because RTP remains active. `winforge-bootstrap.ps1`,
+    `disable_security.ps1`, and `role-bootstrap-target.sh` must instead
+    verify exclusions for `C:\winforge`, `C:\temp`, `C:\eip`,
+    `C:\ProgramData\EIP`, and `C:\Program Files\windbg-mcp` whenever RTP
+    remains active. TP permits those admin exclusion adds even when it blocks
+    the full disable. Missing exclusions while RTP is active remain a hard
+    failure because Defender could quarantine PoC or debugger binaries.
 
 3. **`kd_wrapper.py` holds kd's stdin open on purpose.** kd.exe exits
    when its stdin receives EOF. Scheduled tasks close stdin when the

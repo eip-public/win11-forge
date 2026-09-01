@@ -121,22 +121,25 @@ KDNET_KEY="${KDNET_KEY:-1.2.3.4}"
 echo "[*] Configuring KDNET on target $VM_IP (debugger=$KDNET_HOST:$KDNET_PORT key=$KDNET_KEY)"
 guest_powershell "bcdedit /debug on; bcdedit /dbgsettings net hostip:$KDNET_HOST port:$KDNET_PORT key:$KDNET_KEY; bcdedit /set testsigning on"
 
-# Defender belt-and-suspenders: the gold-image unattend's `Set-MpPreference
-# -DisableRealtimeMonitoring` is silently a no-op under Tamper Protection on
-# Win11 IoT Enterprise LTSC (TP swallows the cmdlet). Real-time, behavior,
-# and IOAV protection stay on despite the bootstrap. Until the gold is
-# rebuilt with a TP-immune disable path (WinDefend Start=4 in specialize
-# pass), add path + process exclusions per-spawn: TP allows admin exclusion
-# adds even when it blocks the full disable. Lab dirs C:\winforge and
-# C:\temp cover the PoC build/run surface.
-echo "[*] Adding Defender exclusions for lab dirs (TP-tolerant bypass)"
-guest_powershell 'foreach ($p in "C:\winforge","C:\temp") { Add-MpPreference -ExclusionPath $p -ErrorAction SilentlyContinue }
+# Defender belt-and-suspenders: Tamper Protection can keep real-time
+# protection active despite the gold-level disable. Reassert and verify every
+# directory used for tools, transfers, evidence, and PoC execution.
+echo "[*] Verifying Defender exclusions for lab dirs"
+guest_powershell '$paths = @("C:\winforge","C:\temp","C:\eip","C:\ProgramData\EIP","C:\Program Files\windbg-mcp")
+foreach ($p in $paths) { Add-MpPreference -ExclusionPath $p -ErrorAction SilentlyContinue }
 $s = Get-MpComputerStatus -ErrorAction SilentlyContinue
-$excl = (Get-MpPreference).ExclusionPath -join ", "
-if ($s -and $s.RealTimeProtectionEnabled) {
-    Write-Host "[!] Defender RealTimeProtectionEnabled is still True - gold disable was silently a no-op (likely TP). Relying on path exclusions: $excl"
+$configured = @((Get-MpPreference -ErrorAction SilentlyContinue).ExclusionPath)
+$rtpProvenOff = $s -and ($s.RealTimeProtectionEnabled -is [bool]) -and ($s.RealTimeProtectionEnabled -eq $false)
+if (-not $rtpProvenOff) {
+    $missing = @($paths | Where-Object { $configured -notcontains $_ })
+    if ($missing.Count -gt 0) { throw "Defender is active or its status is unavailable, and required lab exclusions are missing: $($missing -join ", ")" }
+    if ($s -and $s.RealTimeProtectionEnabled -eq $true) {
+        Write-Host "[+] Defender remains active with verified lab-path exclusions"
+    } else {
+        Write-Host "[+] Defender status unavailable with verified lab-path exclusions"
+    }
 } else {
-    Write-Host "[+] Defender RTP off (or unreachable); exclusions: $excl"
+    Write-Host "[+] Defender RTP off"
 }'
 
 # Auto-reboot on BSOD: the supervisor loop restarts kd.exe after each crash,
