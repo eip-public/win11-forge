@@ -15,11 +15,13 @@ trusted network.
   the user runs can talk to libvirt without prompting.
 - `setup.sh install` builds the Windows gold image. The gold-image
   bootstrap (`unattend-iso/winforge-bootstrap.ps1`,
-  `vm-setup/setup-vm.sh`) **disables Windows Firewall, UAC, and
-  Defender** and locks Windows Update so the build stays fixed across
-  reboots. Target VMs additionally enable `bcdedit /set testsigning on`
-  and `auto-reboot on BSOD`. The gold is not a hardened image — it is
-  designed to be a permissive crash-debug target.
+  `vm-setup/setup-vm.sh`) **disables Windows Firewall and UAC**, attempts
+  to disable Defender, and locks Windows Update so the build stays fixed
+  across reboots. When Tamper Protection keeps Defender real-time
+  protection active, provisioning succeeds only after verifying exclusions
+  for all lab tool, transfer, evidence, and PoC paths. Target VMs additionally
+  enable `bcdedit /set testsigning on` and `auto-reboot on BSOD`. The gold is
+  not a hardened image - it is designed to be a permissive crash-debug target.
 
 ## Network exposure
 

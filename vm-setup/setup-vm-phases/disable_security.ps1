@@ -25,12 +25,34 @@ New-Item -Path $auKey -Force | Out-Null
 Set-ItemProperty -Path $auKey -Name NoAutoUpdate -Type DWord -Value 1 -Force
 Set-ItemProperty -Path $auKey -Name AUOptions    -Type DWord -Value 2 -Force
 
-# Hard assertion: previous code silently logged success even when Defender
-# stayed fully active because Tamper Protection swallowed Set-MpPreference.
-# If we reach this line and RTP is still on, the gold is shipping with live
-# Defender and PoC binaries will be quarantined silently. Fail loud.
+# Win11 LTSC can restore WinDefend before audit mode completes. Tamper
+# Protection then blocks the full disable, but permits explicit exclusions.
+# Verify every path used for tools, transfers, evidence, and PoC execution.
+$labPaths = @(
+    "C:\winforge",
+    "C:\temp",
+    "C:\eip",
+    "C:\ProgramData\EIP",
+    "C:\Program Files\windbg-mcp"
+)
 $mp = Get-MpComputerStatus -ErrorAction SilentlyContinue
-if ($mp -and $mp.RealTimeProtectionEnabled) {
-    throw "Defender RealTimeProtectionEnabled is True at end of disable_security.ps1. WinDefend Start=4 did not take effect (specialize-pass write missing, or this gold predates that change). Investigate before sealing -- the resulting gold will quarantine offensive binaries."
+foreach ($path in $labPaths) {
+    Add-MpPreference -ExclusionPath $path -ErrorAction SilentlyContinue
 }
-Write-Host "[+] Security controls disabled (Defender RTP off; firewall off; UAC off; Windows Update locked)"
+$mp = Get-MpComputerStatus -ErrorAction SilentlyContinue
+
+$defenderState = "real-time protection disabled"
+$rtpProvenOff = $mp -and ($mp.RealTimeProtectionEnabled -is [bool]) -and ($mp.RealTimeProtectionEnabled -eq $false)
+if (-not $rtpProvenOff) {
+    $configured = @((Get-MpPreference -ErrorAction SilentlyContinue).ExclusionPath)
+    $missing = @($labPaths | Where-Object { $configured -notcontains $_ })
+    if ($missing.Count -gt 0) {
+        throw "Defender is active or its status is unavailable, and required lab exclusions are missing: $($missing -join ', ')"
+    }
+    if ($mp -and $mp.RealTimeProtectionEnabled -eq $true) {
+        $defenderState = "active with verified lab-path exclusions"
+    } else {
+        $defenderState = "status unavailable with verified lab-path exclusions"
+    }
+}
+Write-Host "[+] Lab baseline ready (Defender $defenderState; firewall off; UAC off; Windows Update locked)"

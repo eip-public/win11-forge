@@ -7,11 +7,13 @@ for AI-driven analysis.
 
 Fully self-contained — no external repo dependencies.
 
-> **Security note:** the gold image is built with Windows Firewall,
-> UAC, and Defender disabled, and the lab MCP endpoints do not
-> authenticate. Lab networks are host-only/NAT'd by default; keep them
-> that way. Read [`SECURITY.md`](SECURITY.md) before exposing the lab
-> host to anything beyond a trusted LAN.
+> **Security note:** the gold image is built with Windows Firewall and UAC
+> disabled. It attempts to disable Defender; when Tamper Protection keeps
+> real-time protection active, the build instead verifies exclusions for
+> every lab tool, transfer, evidence, and PoC path. The lab MCP endpoints do
+> not authenticate. Lab networks are host-only/NAT'd by default; keep them
+> that way. Read [`SECURITY.md`](SECURITY.md) before exposing the lab host to
+> anything beyond a trusted LAN.
 
 ---
 
@@ -151,8 +153,9 @@ keystroke), installs Windows unattended, then runs `setup-vm.sh`
 (Python, Git, VS Build Tools, WinDbg SDK, Node.js, DesktopCommanderMCP,
 windbg-ext-mcp clone + DLL build, vendored mcp-windbg pip-install,
 fastmcp, **QEMU guest agent** for the KVM control plane), plus the
-hardening pass that disables firewall / UAC / Defender and locks
-Windows Update so the target build stays fixed across reboots. Seals
+lab-baseline pass that disables firewall / UAC, disables Defender when the
+installed LTSC build permits it or verifies lab-path exclusions otherwise,
+and locks Windows Update so the target build stays fixed across reboots. Seals
 to a flat gold qcow2 and stashes the gold's NVRAM alongside.
 
 (Under `WINFORGE_BACKEND=vmware`, the first lab spawn additionally
